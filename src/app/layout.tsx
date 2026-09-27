@@ -65,7 +65,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <main
             id="main"
             tabIndex={-1}
-            className="mx-auto w-full max-w-xl px-4 py-8"
+            className="mx-auto w-full max-w-5xl px-4 py-8"
           >
             {children}
           </main>

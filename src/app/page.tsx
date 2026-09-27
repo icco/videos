@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic"
 
 export default function Home() {
   return (
-    <>
+    <div className="mx-auto max-w-xl">
       <h1 className="mb-2 text-3xl font-bold sm:text-5xl">Videos</h1>
       <p className="mb-6">Upload, watch, and share your videos.</p>
       <VideoUploader />
@@ -16,6 +16,6 @@ export default function Home() {
         </h2>
         <RecentVideoList />
       </section>
-    </>
+    </div>
   )
 }
