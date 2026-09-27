@@ -20,16 +20,47 @@ const fixtureNames = [
 ]
 const fixturePaths = new Set(fixtureNames.map((name) => `videos/2025/${name}`))
 const lookups = []
-// Supply read-only GCS metadata locally so watch pages need no credentials.
+const currentPrefix = `videos/${new Date().getUTCFullYear()}/`
+let listNames = [
+  "001.mp4",
+  "003.MOV",
+  "002.webm",
+  "004 a.mp4",
+  "005%20b.mp4",
+  "readme.txt",
+]
+let failList = false
+let lookupGate = null
+// Supply read-only GCS listing and metadata locally without credentials.
 const storage = external
   ? null
-  : createServer((request, response) => {
+  : createServer(async (request, response) => {
       const url = new URL(request.url, "http://localhost")
+      if (url.pathname === "/storage/v1/b/smoke-videos/o") {
+        assert.equal(url.searchParams.get("prefix"), currentPrefix)
+        response.writeHead(failList ? 403 : 200, {
+          "Content-Type": "application/json",
+        })
+        response.end(
+          JSON.stringify(
+            failList
+              ? { error: { code: 403, message: "Storage unavailable" } }
+              : {
+                  items: listNames.map((name) => ({
+                    name: `${currentPrefix}${name}`,
+                    bucket: "smoke-videos",
+                  })),
+                }
+          )
+        )
+        return
+      }
       const prefix = "/storage/v1/b/smoke-videos/o/"
       const path = url.pathname.startsWith(prefix)
         ? decodeURIComponent(url.pathname.slice(prefix.length))
         : null
       lookups.push(path)
+      if (lookupGate) await lookupGate
       const found = request.method === "GET" && fixturePaths.has(path)
       response.writeHead(found ? 200 : 404, {
         "Content-Type": "application/json",
@@ -97,6 +128,57 @@ try {
   assert.ok(
     document.querySelector('input[type="file"][multiple][accept*=".mp4"]')
   )
+  assert.equal(
+    document.querySelector("video"),
+    null,
+    "Players only appear on watch pages"
+  )
+  if (storage) {
+    const links = Array.from(
+      document.querySelectorAll('section[aria-labelledby="recent-videos"] li a')
+    )
+    assert.deepEqual(
+      links.map((link) => link.textContent),
+      ["005%20b.mp4", "004 a.mp4", "003.MOV", "002.webm", "001.mp4"]
+    )
+    for (const link of links) {
+      assert.equal(
+        link.getAttribute("href"),
+        `/${currentPrefix}${encodeURIComponent(link.textContent)}`
+      )
+    }
+    listNames = []
+    const emptyHome = await fetch(base)
+    assert.match(await emptyHome.text(), /No videos yet/)
+    failList = true
+    const failedHome = await fetch(base)
+    assert.equal(failedHome.status, 200)
+    const failedDocument = new JSDOM(await failedHome.text()).window.document
+    assert.match(
+      failedDocument.querySelector('[role="alert"]').textContent,
+      /Unable to load videos/
+    )
+    assert.equal(
+      failedDocument.querySelector('[role="alert"] button').textContent,
+      "Try again"
+    )
+    assert.ok(
+      failedDocument.querySelector('input[type="file"]'),
+      "Listing failures leave uploads available"
+    )
+    failList = false
+    listNames = ["006.mp4"]
+    const refreshedHome = await fetch(base)
+    const refreshedDocument = new JSDOM(await refreshedHome.text()).window
+      .document
+    assert.equal(
+      refreshedDocument.querySelector(
+        'section[aria-labelledby="recent-videos"] li a'
+      ).textContent,
+      "006.mp4",
+      "A fresh render includes new uploads without cached listing data"
+    )
+  }
   assert.match(
     home.headers.get("content-security-policy") || "",
     /media-src 'self' https:\/\/storage.googleapis.com/
@@ -163,6 +245,49 @@ try {
   }
   await checkMissingVideo("/videos/invalid/video.mp4")
   if (storage) {
+    let resumeLookup
+    lookupGate = new Promise((resolve) => {
+      resumeLookup = resolve
+    })
+    let reader
+    let streamedHtml = ""
+    const decoder = new TextDecoder()
+    try {
+      const streamingWatch = await fetch(
+        `${base}/videos/2025/smoke%20video.mp4`,
+        {
+          signal: AbortSignal.timeout(10000),
+        }
+      )
+      assert.equal(streamingWatch.status, 200)
+      reader = streamingWatch.body.getReader()
+      while (!streamedHtml.includes("Loading video…")) {
+        const { done, value } = await reader.read()
+        assert.equal(
+          done,
+          false,
+          "The watch skeleton arrives while storage is still pending"
+        )
+        streamedHtml += decoder.decode(value, { stream: true })
+      }
+      assert.equal(
+        new JSDOM(streamedHtml).window.document.querySelector("video"),
+        null
+      )
+    } finally {
+      resumeLookup()
+      lookupGate = null
+    }
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      streamedHtml += decoder.decode(value, { stream: true })
+    }
+    streamedHtml += decoder.decode()
+    assert.ok(
+      new JSDOM(streamedHtml).window.document.querySelector("video[controls]"),
+      "The player streams after the lookup completes"
+    )
     // Keep both space and literal percent-escape names in storage so incorrect
     // decoding cannot silently play a different, existing video.
     for (const filename of fixtureNames) {
