@@ -94,4 +94,15 @@ CI checks pull requests and builds the container; merging to `main` publishes
 access in the `@icco/react-common` package settings. Dependabot uses the
 `GH_PACKAGES_TOKEN` secret with `read:packages` access.
 
+If `ghcr.io/icco/videos` already exists (including after recreating this
+repository), grant `icco/videos` **Write** access in the container package's
+**Settings → Manage Actions access**. The workflow's `packages: write` permission
+does not grant access to an existing package by itself. A
+`permission_denied: write_package` failure during publishing indicates this
+package access needs checking.
+
+Add `GH_PACKAGES_TOKEN` under the repository's **Settings → Secrets and variables
+→ Dependabot**. This is separate from Actions secrets; a missing value causes
+Dependabot to fail before it can check npm updates.
+
 All application and configuration changes go through pull requests.
