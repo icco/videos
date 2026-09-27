@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import { Writable } from "node:stream"
 import { beforeEach, mock, test } from "node:test"
 
+import { createVideo, probeVideo } from "./media.mjs"
+
 let writes = []
 let listed = []
 let listingOptions
@@ -53,7 +55,7 @@ delete process.env.VIDEO_PUBLIC_BASE_URL
 const { POST } = await import("../src/app/api/upload/route.ts")
 const { GET } = await import("../src/app/api/list/route.ts")
 const { getVideo, videoUrl } = await import("../src/lib/storage.ts")
-const { validateVideos, MAX_BATCH_BYTES, videoPagePath } =
+const { validateVideos, MAX_BATCH_BYTES, VIDEO_TYPES, videoPagePath } =
   await import("../src/lib/videos.ts")
 
 beforeEach(() => {
@@ -72,32 +74,67 @@ function request(files) {
   return new Request("http://localhost/api/upload", { method: "POST", body })
 }
 
-test("uploads multiple videos with unique paths, exact bytes, and playback MIME types", async () => {
-  const response = await POST(
-    request([
-      new File(["first video"], "holiday.MP4", {
-        type: "application/octet-stream",
-      }),
-      new File(["second video"], "holiday.webm", { type: "video/webm" }),
-    ])
+test("processes a mixed batch of every accepted format into AV1/Opus WebM with unique watch URLs", async () => {
+  const files = await Promise.all(
+    Object.keys(VIDEO_TYPES).map(
+      async (ext) =>
+        new File([await createVideo(ext)], `holiday${ext.toUpperCase()}`, {
+          type: "application/octet-stream",
+        })
+    )
   )
+  const response = await POST(request(files))
   assert.equal(response.status, 200)
   const result = await response.json()
   assert.equal(result.success, true)
-  assert.equal(result.files.length, 2)
-  assert.notEqual(result.files[0].path, result.files[1].path)
-  assert.match(
-    result.files[0].path,
-    new RegExp(`^videos/${new Date().getUTCFullYear()}/[0-9A-Z]+\\.mp4$`)
-  )
+  assert.equal(result.files.length, files.length)
   assert.equal(
-    result.files[0].url,
-    `https://storage.googleapis.com/test-videos/${result.files[0].path}`
+    new Set(result.files.map((file) => file.path)).size,
+    files.length
   )
-  assert.equal(writes[0].options.metadata.contentType, "video/mp4")
-  assert.equal(writes[1].options.metadata.contentType, "video/webm")
-  assert.equal(Buffer.concat(writes[0].chunks).toString(), "first video")
-  assert.equal(Buffer.concat(writes[1].chunks).toString(), "second video")
+  listed = result.files.map((file) => ({ name: file.path }))
+  for (const [index, file] of result.files.entries()) {
+    assert.match(
+      file.path,
+      new RegExp(`^videos/${new Date().getUTCFullYear()}/[0-9A-Z]+\\.webm$`)
+    )
+    assert.equal(
+      file.url,
+      `https://storage.googleapis.com/test-videos/${file.path}`
+    )
+    assert.equal(writes[index].options.metadata.contentType, "video/webm")
+    const bytes = Buffer.concat(writes[index].chunks)
+    assert.notDeepEqual(bytes, Buffer.from(await files[index].arrayBuffer()))
+    const { streams, format } = probeVideo(bytes)
+    assert.match(format.format_name, /webm/)
+    assert.deepEqual(
+      streams.map((stream) => stream.codec_name),
+      ["av1", "opus"]
+    )
+    assert.equal(streams[0].pix_fmt, "yuv420p")
+    assert.equal(streams[1].channels, 2)
+    const [, year, filename] = file.path.split("/")
+    assert.deepEqual(await getVideo(year, filename), file)
+  }
+  assert.deepEqual(
+    new Set((await (await GET()).json()).videos),
+    new Set(result.files.map((file) => file.url))
+  )
+})
+
+test("conversion failures report already saved files without storing a broken video", async () => {
+  const response = await POST(
+    request([
+      new File([await createVideo(".mp4")], "good.mp4"),
+      new File(["invalid"], "broken.mp4"),
+    ])
+  )
+  assert.equal(response.status, 500)
+  const result = await response.json()
+  assert.equal(result.files.length, 1)
+  assert.match(result.message, /1 video\(s\) were saved/)
+  assert.equal(writes.length, 1)
+  assert.match(writes[0].path, /\.webm$/)
 })
 
 test("rejects empty, non-file, unsupported, and mixed batches before any writes", async () => {
@@ -161,8 +198,9 @@ test("enforces batch count and size without allocating large test files", () => 
 
 test("reports partial uploads when a later storage write fails", async () => {
   failWrite = 2
+  const input = await createVideo(".mp4")
   const response = await POST(
-    request([new File(["a"], "a.mp4"), new File(["b"], "b.mp4")])
+    request([new File([input], "a.mp4"), new File([input], "b.mp4")])
   )
   assert.equal(response.status, 500)
   const result = await response.json()
