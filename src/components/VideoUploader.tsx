@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation"
 import { type FormEvent, useRef, useState } from "react"
 
-import { validateVideos, VIDEO_ACCEPT } from "@/lib/videos"
+import { validateVideos, VIDEO_ACCEPT, VIDEO_SIZE_LIMIT } from "@/lib/videos"
 
 export function VideoUploader() {
   const router = useRouter()
@@ -72,9 +72,10 @@ export function VideoUploader() {
           className="file-input w-full"
         />
         <p id="upload-help" className="text-sm opacity-75">
-          MP4, M4V, WebM, MOV, OGV, or MKV. Up to 10 files and 100 MiB per
-          batch. Every video is automatically converted to WebM (AV1/Opus)
-          before saving. Processing can take a few minutes.
+          MP4, M4V, WebM, MOV, OGV, or MKV. Up to 10 files and{" "}
+          {VIDEO_SIZE_LIMIT} per batch. Every video is automatically converted
+          to WebM (AV1/Opus) before saving. Long recordings can take an hour to
+          process per file; keep this page open until the upload finishes.
         </p>
         <button
           type="submit"

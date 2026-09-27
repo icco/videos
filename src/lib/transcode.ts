@@ -8,6 +8,7 @@ import { pipeline } from "node:stream/promises"
 import type { ReadableStream } from "node:stream/web"
 import { promisify } from "node:util"
 
+import type { UploadedFile } from "./uploads.ts"
 import { videoExtension } from "./videos.ts"
 
 const execFileAsync = promisify(execFile)
@@ -23,7 +24,7 @@ const INPUT_FORMATS: Record<string, string> = {
 
 // Keep the temporary WebM alive until its upload finishes, including on errors.
 export async function withPreparedVideo<T>(
-  file: File,
+  file: File | UploadedFile,
   upload: (stream: Readable, extension: string) => Promise<T>,
   signal?: AbortSignal
 ): Promise<T> {
@@ -32,13 +33,15 @@ export async function withPreparedVideo<T>(
   const directory = await mkdtemp(join(tmpdir(), "videos-"))
   let stream: Readable | undefined
   try {
-    const input = join(directory, "input")
+    const input = "path" in file ? file.path : join(directory, "input")
     const output = join(directory, "output.webm")
-    await pipeline(
-      Readable.fromWeb(file.stream() as ReadableStream<Uint8Array>),
-      createWriteStream(input),
-      { signal }
-    )
+    if (!("path" in file)) {
+      await pipeline(
+        Readable.fromWeb(file.stream() as ReadableStream<Uint8Array>),
+        createWriteStream(input),
+        { signal }
+      )
+    }
     await execFileAsync(
       "ffmpeg",
       [
@@ -79,7 +82,7 @@ export async function withPreparedVideo<T>(
         "1",
         output,
       ],
-      { signal, timeout: 5 * 60 * 1000, killSignal: "SIGKILL" }
+      { signal, timeout: 60 * 60 * 1000, killSignal: "SIGKILL" }
     )
     stream = createReadStream(output)
     return await upload(stream, ".webm")

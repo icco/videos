@@ -179,20 +179,24 @@ test("rejects malformed multipart and oversized declared requests", async () => 
 })
 
 test("enforces batch count and size without allocating large test files", () => {
+  assert.equal(
+    validateVideos([{ name: "recording.mkv", size: 828487418 }]),
+    null
+  )
   assert.match(
     validateVideos(Array.from({ length: 11 }, () => new File(["v"], "v.mp4"))),
     /at most 10/
   )
   assert.match(
     validateVideos([{ name: "large.mp4", size: MAX_BATCH_BYTES + 1 }]),
-    /exceeds 100 MiB/
+    /exceeds 2 GiB/
   )
   assert.match(
     validateVideos([
       { name: "a.mp4", size: MAX_BATCH_BYTES },
       { name: "b.webm", size: 1 },
     ]),
-    /at most 100 MiB/
+    /at most 2 GiB/
   )
 })
 
