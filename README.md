@@ -11,7 +11,7 @@ A video uploader and index for `videos.natwelch.com`, following
 - Shareable watch pages at `/videos/<year>/<filename>`, including past years.
 - Native video controls, inline mobile playback, and original-file links on watch pages.
 - Watch-page streaming with a player-shaped loading skeleton.
-- MP4, M4V, WebM, MOV, and OGV uploads; up to 10 files and 100 MiB per batch.
+- MP4, M4V, WebM, MOV, OGV, and MKV uploads; up to 10 files and 100 MiB per batch.
 - Empty, retry, upload-in-progress, success, and failure states.
 - Shared header/footer, light/dark themes, and Web Vitals, like the photos site.
 - Strict TypeScript, CI, CodeQL, Dependabot, and a non-root standalone Docker image.

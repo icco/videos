@@ -72,9 +72,9 @@ export function VideoUploader() {
           className="file-input w-full"
         />
         <p id="upload-help" className="text-sm opacity-75">
-          MP4, M4V, WebM, MOV, or OGV. Up to 10 files and 100 MiB per batch.
-          Playback depends on your browser and the video codec; MP4 (H.264) and
-          WebM work best.
+          MP4, M4V, WebM, MOV, OGV, or MKV. Up to 10 files and 100 MiB per
+          batch. Playback depends on your browser and the video codec; MP4
+          (H.264) and WebM work best.
         </p>
         <button
           type="submit"
