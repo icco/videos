@@ -11,7 +11,8 @@ A video uploader and index for `videos.natwelch.com`, following
 - Shareable watch pages at `/videos/<year>/<filename>`, including past years.
 - Native video controls, inline mobile playback, and direct video links on watch pages.
 - Watch-page streaming with a player-shaped loading skeleton.
-- MP4, M4V, WebM, MOV, OGV, and MKV uploads; up to 10 files and 100 MiB per batch.
+- MP4, M4V, WebM, MOV, OGV, and MKV uploads; up to 10 files and 2 GiB per batch.
+- Streaming multipart uploads to temporary files, keeping large recordings out of memory.
 - Automatic conversion of every upload to WebM with AV1 video and Opus audio.
 - Empty, retry, upload-in-progress, success, and failure states.
 - Shared header/footer, light/dark themes, and Web Vitals, like the photos site.
@@ -57,34 +58,22 @@ service account in production, local gcloud credentials, or
 | `GCP_BUCKET_NAME`       | `icco-cloud`                              | Bucket for uploads and listing           |
 | `VIDEO_PUBLIC_BASE_URL` | `https://storage.googleapis.com/<bucket>` | Public bucket/CDN URL, without `videos/` |
 
-The runtime identity needs object create/list/get permissions. The bucket or CDN must
-allow viewers to read uploaded objects; the app does not change bucket IAM.
-Direct GCS URLs support range requests for playback and seeking. A custom CDN
-must also support video content types and range requests. Set
-`VIDEO_PUBLIC_BASE_URL` at **both build and runtime** when using a custom domain,
-because the media CSP is generated at build time.
-
 ## API
 
 - `POST /api/upload`: multipart form data with one or more `video` file fields.
   Returns `{ success: true, files: [{ path, url }] }`. Invalid requests return 400
-  (or 413 for an oversized declared request). Conversion or storage failures return
+  (or 413 for oversized uploads, including chunked requests). Conversion or storage failures return
   500 with a message and any files already uploaded, allowing partial uploads to be seen.
 - `GET /api/list`: returns `{ videos: [url, ...] }` for the current UTC year,
   newest first, without response caching.
 - `GET /healthz`: readiness endpoint, independent of GCS credentials.
 
-The uploader follows photos' deployment model and has no built-in login. Put it
-behind your existing access-controlled ingress if uploads should be private.
-Enforce a 101 MiB request-body limit at the ingress, including chunked requests,
-and allow enough request time for uploads and conversion. Video conversion runs
-synchronously, one file at a time, with a five-minute timeout per file; the
-response arrives after conversion and storage finish. Provide writable temporary
-storage for both the source video and converted WebM. Temporary files are removed
-after success, failure, or cancellation. Multipart parsing buffers the request;
-the application validates the 100 MiB source batch limit and streams files to GCS
-without making an additional whole-file buffer. Converted output may differ in
-size.
+Uploads are streamed to temporary files with file, count, batch, and total-request
+limits enforced while receiving them. The complete batch is validated before
+conversion or storage begins. Videos are processed one at a time, with a one-hour
+conversion timeout per file, and the response arrives after processing finishes.
+Temporary files are removed after success, failure, or cancellation. Long
+recordings can take tens of minutes; keep the upload page open until completion.
 
 ## Checks
 
