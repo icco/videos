@@ -1,0 +1,27 @@
+version: 2
+registries:
+  github-packages:
+    type: npm-registry
+    url: https://npm.pkg.github.com
+    token: ${{ secrets.GH_PACKAGES_TOKEN }}
+updates:
+  - package-ecosystem: npm
+    directory: /
+    registries: [github-packages]
+    schedule:
+      interval: weekly
+    groups:
+      next:
+        patterns: [next, eslint-config-next, "@next/*"]
+      react:
+        patterns: [react, react-dom, "@types/react", "@types/react-dom"]
+      tailwind:
+        patterns: [tailwindcss, "@tailwindcss/*", daisyui]
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

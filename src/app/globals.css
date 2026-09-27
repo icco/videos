@@ -1,0 +1,16 @@
+@import "tailwindcss";
+
+@source "../../node_modules/@icco/react-common/dist";
+/* Loading constructs these class names dynamically. */
+@source inline("loading-{xs,sm,md,lg}");
+
+@plugin "daisyui" {
+  themes:
+    light --default,
+    dark --prefersdark;
+}
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --color-link: var(--color-primary);
+}
