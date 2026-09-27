@@ -54,7 +54,8 @@ export function validateVideos(
   return null
 }
 
-export interface UploadedVideo {
-  path: string
-  url: string
+export interface VideoJob {
+  id: string
+  name: string
+  status: "queued" | "processing" | "failed"
 }

@@ -31,12 +31,28 @@ let listNames = [
 ]
 let failList = false
 let lookupGate = null
-// Supply read-only GCS listing and metadata locally without credentials.
+const queuedVideo = {
+  name: "videos/pending/0000000000001.mkv",
+  bucket: "smoke-videos",
+  metageneration: "1",
+  size: "13",
+  metadata: {
+    status: "queued",
+    originalName: "broken.mkv",
+    outputPath: "videos/2025/0000000000001.webm",
+  },
+}
+// Supply GCS fixtures locally without credentials or live writes.
 const storage = external
   ? null
   : createServer(async (request, response) => {
       const url = new URL(request.url, "http://localhost")
       if (url.pathname === "/storage/v1/b/smoke-videos/o") {
+        if (url.searchParams.get("prefix") === "videos/pending/") {
+          response.writeHead(200, { "Content-Type": "application/json" })
+          response.end(JSON.stringify({ items: [queuedVideo] }))
+          return
+        }
         assert.equal(url.searchParams.get("prefix"), currentPrefix)
         response.writeHead(failList ? 403 : 200, {
           "Content-Type": "application/json",
@@ -59,6 +75,24 @@ const storage = external
       const path = url.pathname.startsWith(prefix)
         ? decodeURIComponent(url.pathname.slice(prefix.length))
         : null
+      if (path === queuedVideo.name && request.method === "PATCH") {
+        assert.equal(
+          url.searchParams.get("ifMetagenerationMatch"),
+          queuedVideo.metageneration
+        )
+        const chunks = []
+        for await (const chunk of request) chunks.push(chunk)
+        Object.assign(
+          queuedVideo.metadata,
+          JSON.parse(Buffer.concat(chunks)).metadata
+        )
+        queuedVideo.metageneration = String(
+          Number(queuedVideo.metageneration) + 1
+        )
+        response.writeHead(200, { "Content-Type": "application/json" })
+        response.end(JSON.stringify(queuedVideo))
+        return
+      }
       lookups.push(path)
       if (lookupGate) await lookupGate
       const found = request.method === "GET" && fixturePaths.has(path)
@@ -110,6 +144,26 @@ try {
     await setTimeout(500)
   }
   assert.ok(ready, "Production server becomes ready")
+  if (storage) {
+    for (
+      let attempt = 0;
+      attempt < 60 && queuedVideo.metadata.status !== "failed";
+      attempt++
+    ) {
+      await setTimeout(100)
+    }
+    assert.equal(
+      queuedVideo.metadata.status,
+      "failed",
+      "The background worker claims persisted jobs at startup and records failures"
+    )
+    const jobs = await fetch(`${base}/api/jobs`)
+    assert.equal(jobs.status, 200)
+    assert.equal(jobs.headers.get("cache-control"), "no-store")
+    assert.deepEqual((await jobs.json()).jobs, [
+      { id: "0000000000001.mkv", name: "broken.mkv", status: "failed" },
+    ])
+  }
   const home = await fetch(base)
   assert.equal(home.status, 200)
   assert.equal(home.headers.get("x-powered-by"), null)
