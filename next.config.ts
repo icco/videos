@@ -11,6 +11,7 @@ const contentSecurityPolicy = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self'",
+  `media-src 'self' ${new URL(process.env.VIDEO_PUBLIC_BASE_URL || "https://storage.googleapis.com").origin}`,
   `connect-src 'self'${site.analyticsPath ? " https://reportd.natwelch.com" : ""}${isDevelopment ? " ws: wss:" : ""}`,
   "object-src 'none'",
   "base-uri 'self'",
@@ -20,8 +21,24 @@ const contentSecurityPolicy = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Keep the GCS authentication stack unbundled on Node 26, as in photos.
+  serverExternalPackages: ["@google-cloud/storage"],
   poweredByHeader: false,
   reactStrictMode: true,
+  async redirects() {
+    return [
+      {
+        source: "/about",
+        destination: "https://natwelch.com/wiki/about",
+        permanent: true,
+      },
+      {
+        source: "/privacy",
+        destination: "https://natwelch.com/wiki/privacy-policy",
+        permanent: true,
+      },
+    ]
+  },
   async headers() {
     return [
       {

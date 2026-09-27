@@ -50,6 +50,20 @@ try {
   )
   const document = new JSDOM(await home.text()).window.document
   assert.ok(document.querySelector("h1"))
+  assert.equal(document.querySelector("h1").textContent, "Videos")
+  assert.ok(
+    document.querySelector('input[type="file"][multiple][accept*=".mp4"]')
+  )
+  assert.match(
+    home.headers.get("content-security-policy") || "",
+    /media-src 'self' https:\/\/storage.googleapis.com/
+  )
+  const emptyUpload = await fetch(`${base}/api/upload`, {
+    method: "POST",
+    body: new FormData(),
+  })
+  assert.equal(emptyUpload.status, 400)
+  assert.match((await emptyUpload.json()).message, /Select at least one video/)
   assert.equal(document.querySelectorAll("main").length, 1)
   assert.ok(document.querySelector('main#main[tabindex="-1"]'))
   assert.ok(document.querySelector('header a[aria-label$=" home"] svg'))
