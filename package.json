@@ -1,12 +1,12 @@
 {
-  "name": "nextjs-template",
+  "name": "videos",
   "version": "1.0.0",
-  "description": "A Next.js starter for icco projects.",
+  "description": "A video uploader and gallery backed by Google Cloud Storage.",
   "private": true,
   "type": "module",
   "license": "MIT",
   "author": "Nat Welch <nat@natwelch.com>",
-  "repository": "https://github.com/icco/nextjs-template.git",
+  "repository": "https://github.com/icco/videos.git",
   "packageManager": "pnpm@11.2.2",
   "engines": {
     "node": ">=26"
@@ -21,15 +21,18 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check": "pnpm lint && pnpm type-check && pnpm format:check",
-    "test:smoke": "node scripts/smoke.mjs"
+    "test:smoke": "node scripts/smoke.mjs",
+    "test": "node --experimental-test-module-mocks --test tests/*.test.mjs"
   },
   "dependencies": {
+    "@google-cloud/storage": "^8.2.0",
     "@heroicons/react": "^2.2.0",
     "@icco/react-common": "^2026.10919.1",
     "jsdom": "^30.1.0",
     "next": "^16.3.6",
     "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react-dom": "^19.3.0",
+    "tsid-ts": "^0.0.9"
   },
   "devDependencies": {
     "@eslint/compat": "^2.1.1",

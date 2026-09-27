@@ -1,112 +1,97 @@
-# nextjs-template
+# Videos
 
-A runnable Next.js template for [icco](https://github.com/icco) projects, based on
-`natwelch.com`, `lifeline`, `realworldsre.com`, and `go-template`.
+A video uploader and gallery for `videos.natwelch.com`, following
+[icco/photos](https://github.com/icco/photos) and built on
+[icco/nextjs-template](https://github.com/icco/nextjs-template).
 
-## Start a project
+## Features
+
+- Multi-file uploads to Google Cloud Storage under `videos/<UTC year>/<TSID>.<ext>`.
+- Current-year gallery, newest first, refreshed after uploads.
+- Native video controls, inline mobile playback, and links to original files.
+- MP4, M4V, WebM, MOV, and OGV uploads; up to 10 files and 100 MiB per batch.
+- Loading, empty, retry, upload-in-progress, success, and failure states.
+- Shared header/footer, light/dark themes, and Web Vitals, like the photos site.
+- Strict TypeScript, CI, CodeQL, Dependabot, and a non-root standalone Docker image.
+
+Videos are stored as uploaded; no transcoding is performed. Browser playback
+depends on the container and codec. Prefer H.264 MP4 or WebM for broad support;
+other formats remain accessible through their original-file links.
+
+## Development
+
+Use Node 26 and pnpm 11.2.2:
 
 ```sh
-gh repo create icco/my-site --public --template icco/nextjs-template --clone
-cd my-site
-nvm use
 npm install --global pnpm@11.2.2
 export NODE_AUTH_TOKEN="$(gh auth token)"
 pnpm install --frozen-lockfile
+cp .env.example .env.local
+gcloud auth application-default login
 pnpm dev
 ```
 
-Open <http://localhost:8080>.
+Open <http://localhost:8080>. `NODE_AUTH_TOKEN` needs GitHub Packages read access
+for `@icco/react-common`. GCS uses Application Default Credentials (a workload
+service account in production, local gcloud credentials, or
+`GOOGLE_APPLICATION_CREDENTIALS` pointing to a key outside the repository).
 
-1. Update the name, description, and repository in `package.json`.
-2. Set the site name, description, production URL, repository, and navigation in
-   `src/lib/site.ts`. This also drives metadata, canonical URLs, robots, and the
-   sitemap. Review the footer options and set `analyticsPath` to enable Web Vitals.
-3. Customize `src/app/page.tsx`, `public/icon.svg`, and this README.
-4. Confirm Actions are enabled: `gh api repos/icco/my-site/actions/permissions`.
-   Complete the GitHub Packages setup below for the new repository.
-5. Run the checks below, commit, and push. Main publishes `ghcr.io/icco/my-site:main`.
+| Variable                | Default                                   | Purpose                                  |
+| ----------------------- | ----------------------------------------- | ---------------------------------------- |
+| `GCP_PROJECT_ID`        | `icco-cloud`                              | Google Cloud project                     |
+| `GCP_BUCKET_NAME`       | `icco-cloud`                              | Bucket for uploads and listing           |
+| `VIDEO_PUBLIC_BASE_URL` | `https://storage.googleapis.com/<bucket>` | Public bucket/CDN URL, without `videos/` |
 
-## Commands
+The runtime identity needs object create/list permissions. The bucket or CDN must
+allow viewers to read uploaded objects; the app does not change bucket IAM.
+Direct GCS URLs support range requests for playback and seeking. A custom CDN
+must also support video content types and range requests. Set
+`VIDEO_PUBLIC_BASE_URL` at **both build and runtime** when using a custom domain,
+because the media CSP is generated at build time.
 
-| Command           | Purpose                                                       |
-| ----------------- | ------------------------------------------------------------- |
-| `pnpm dev`        | Development server on port 8080                               |
-| `pnpm check`      | ESLint, strict type checking, and formatting checks           |
-| `pnpm lint:fix`   | Fix lint and import order                                     |
-| `pnpm format`     | Format files and sort Tailwind classes                        |
-| `pnpm build`      | Production build with standalone output                       |
-| `pnpm start`      | Local production server (`PORT`, default 8080)                |
-| `pnpm test:smoke` | Start production server and check routes and security headers |
+## API
 
-## Shared components
+- `POST /api/upload`: multipart form data with one or more `video` file fields.
+  Returns `{ success: true, files: [{ path, url }] }`. Invalid requests return 400
+  (or 413 for an oversized declared request). Storage failures return 500 with a
+  message and any files already uploaded, allowing partial uploads to be seen.
+- `GET /api/list`: returns `{ videos: [url, ...] }` for the current UTC year,
+  newest first, without response caching.
+- `GET /healthz`: readiness endpoint, independent of GCS credentials.
 
-`@icco/react-common` is installed with `@heroicons/react`, `@wrksz/themes`, and
-`jsdom` (needed by the optional XXIIVV ring). Import from the package's component
-subpaths to preserve the server/client boundary.
+The uploader follows photos' deployment model and has no built-in login. Put it
+behind your existing access-controlled ingress if uploads should be private.
+Enforce a 101 MiB request-body limit at the ingress, including chunked requests,
+and allow enough request time for uploads. Multipart parsing buffers the request;
+the application validates the 100 MiB batch limit and streams files to GCS
+without making an additional whole-file buffer.
 
-- **Themes:** the root `ThemeProvider` uses `data-theme`, hybrid cookie/localStorage
-  persistence, system preference, and light/dark daisyUI themes. `SiteHeader`
-  includes the shared `ThemeToggle`. Cookie-based theming makes pages dynamically
-  rendered; robots and sitemap remain static. Use `useTheme` or
-  `ClientThemeProvider` from `@icco/react-common/ClientThemeProvider` for additional
-  client-side controls.
-- **Header:** `src/components/Header.tsx` combines `SiteHeader`, the animated
-  `Logo`, an accessible home link, and `site.navigation`.
-- **Footer:** the shared `Footer` includes copyright, source, Recurse Center, and
-  privacy links. Its copyright and personal links refer to Nat Welch. The
-  `site.footer` switches expose `Social`, `RecurseRing`, and `XXIIVVRing`; the
-  footer includes `RecurseLogo` and `XXIIVVLogo` where appropriate. Social links
-  include `/feed.rss`, so add a feed before enabling them. Both rings use
-  natwelch.com's membership IDs and fetch external data; enable them only when
-  that is appropriate for the new site.
-- **Route states:** `loading.tsx` uses `Loading` with an announced status;
-  `error.tsx` uses `ErrorMessage` with a retry button. The root layout owns the
-  single `<main id="main">` landmark for pages, loading, errors, and 404s.
-- **Web Vitals:** set `site.analyticsPath` to the project's reportd path, such as
-  `/analytics/my-site`. This mounts `WebVitals` and allows
-  `https://reportd.natwelch.com` in CSP `connect-src`. An empty path disables
-  reporting. Rebuild after changing it.
-- **Styles:** `globals.css` scans the installed shared package for Tailwind
-  classes, includes the dynamically named loading sizes, and defines the shared
-  social-link hover color.
+## Checks
 
-## GitHub Packages
+```sh
+pnpm check
+pnpm test
+pnpm build
+pnpm test:smoke
+```
 
-The committed `.npmrc` sends only the `@icco` scope to GitHub Packages and reads
-credentials from `NODE_AUTH_TOKEN`. Locally, use a GitHub token with
-`read:packages` (the `gh` token must have that scope). Never commit the token.
+API tests use mocked storage, so checks require no GCP credentials or live writes.
+`pnpm format` and `pnpm lint:fix` apply formatting and import-order fixes.
 
-Actions use `GITHUB_TOKEN` with package access. In the `@icco/react-common`
-package settings, grant the new repository **Actions access** with the **Read**
-role. Add a Dependabot secret named `GH_PACKAGES_TOKEN` with `read:packages` so
-dependency updates can resolve the scoped package. Template-generated repositories
-need their own access and secret configuration.
-
-Docker installs use a BuildKit secret, also wired into CI:
+## Deployment
 
 ```sh
 export NODE_AUTH_TOKEN="$(gh auth token)"
-docker build --secret id=npm_token,env=NODE_AUTH_TOKEN -t my-site .
+docker build --secret id=npm_token,env=NODE_AUTH_TOKEN -t videos .
 ```
 
-The token is available only to the dependency-install step, not in build arguments
-or the runtime image.
+The image serves on port 8080 as a non-root user. Supply storage configuration
+and credentials at runtime. Set up DNS, HTTPS, and routing for
+`videos.natwelch.com` in the deployment environment.
 
-## Defaults and provenance
+CI checks pull requests and builds the container; merging to `main` publishes
+`ghcr.io/icco/videos:main` with provenance. Grant this repository Read Actions
+access in the `@icco/react-common` package settings. Dependabot uses the
+`GH_PACKAGES_TOKEN` secret with `read:packages` access.
 
-- **natwelch.com / lifeline:** App Router under `src/app`, TypeScript, pnpm,
-  Tailwind/daisyUI, standalone Docker on port 8080, and security headers.
-- **natwelch.com:** Prettier style, import sorting, GHCR publishing with provenance,
-  CodeQL, and weekly Dependabot updates. Actions are pinned to commit SHAs.
-- **realworldsre.com:** Explicit type-check command.
-- ESLint stays on 9 until Next.js's React, import, and accessibility plugins
-  support ESLint 10; TypeScript stays on the established 6.0 line.
-- **go-template:** Conventional PR titles and documented project initialization.
-- CI checks a frozen lockfile, lint, types, formatting, a production build, and
-  HTTP smoke tests. PRs build containers; only main publishes them, after CI passes.
-- Server Components by default, accessible page landmarks, dark-mode-aware
-  daisyUI themes, system fonts, and a health endpoint at `/healthz`.
-- CSP allows inline scripts for Next.js hydration and theme initialization; `unsafe-eval` is
-  development-only. Caddy supplies HTTPS/HSTS at deployment.
-
-Contentlayer2 remains an optional addition for projects that need Markdown/MDX.
+All application and configuration changes go through pull requests.
