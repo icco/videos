@@ -78,31 +78,4 @@ pnpm test:smoke
 API tests use mocked storage, so checks require no GCP credentials or live writes.
 `pnpm format` and `pnpm lint:fix` apply formatting and import-order fixes.
 
-## Deployment
-
-```sh
-export NODE_AUTH_TOKEN="$(gh auth token)"
-docker build --secret id=npm_token,env=NODE_AUTH_TOKEN -t videos .
-```
-
-The image serves on port 8080 as a non-root user. Supply storage configuration
-and credentials at runtime. Set up DNS, HTTPS, and routing for
-`videos.natwelch.com` in the deployment environment.
-
-CI checks pull requests and builds the container; merging to `main` publishes
-`ghcr.io/icco/videos:main` with provenance. Grant this repository Read Actions
-access in the `@icco/react-common` package settings. Dependabot uses the
-`GH_PACKAGES_TOKEN` secret with `read:packages` access.
-
-If `ghcr.io/icco/videos` already exists (including after recreating this
-repository), grant `icco/videos` **Write** access in the container package's
-**Settings → Manage Actions access**. The workflow's `packages: write` permission
-does not grant access to an existing package by itself. A
-`permission_denied: write_package` failure during publishing indicates this
-package access needs checking.
-
-Add `GH_PACKAGES_TOKEN` under the repository's **Settings → Secrets and variables
-→ Dependabot**. This is separate from Actions secrets; a missing value causes
-Dependabot to fail before it can check npm updates.
-
 All application and configuration changes go through pull requests.
