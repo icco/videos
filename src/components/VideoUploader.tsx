@@ -75,10 +75,7 @@ export function VideoUploader() {
           className="file-input w-full"
         />
         <p id="upload-help" className="text-sm opacity-75">
-          MP4, M4V, WebM, MOV, OGV, or MKV. Up to 10 files and{" "}
-          {VIDEO_SIZE_LIMIT} per batch. Every video is automatically converted
-          to WebM (AV1/Opus) in the background after uploading. You can close
-          this page once the upload is confirmed.
+          MP4, M4V, WebM, MOV, OGV, or MKV. Up to 10 files and {VIDEO_SIZE_LIMIT} per batch. 
         </p>
         <button
           type="submit"
