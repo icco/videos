@@ -4,6 +4,7 @@ export const VIDEO_TYPES: Record<string, string> = {
   ".webm": "video/webm",
   ".mov": "video/quicktime",
   ".ogv": "video/ogg",
+  ".mkv": "video/matroska",
 }
 
 export const MAX_VIDEO_BYTES = 100 * 1024 * 1024
@@ -38,7 +39,7 @@ export function validateVideos(files: File[]): string | null {
     return "Upload at most 10 videos at a time."
   for (const file of files) {
     if (!VIDEO_TYPES[videoExtension(file.name)]) {
-      return `${file.name}: use MP4, M4V, WebM, MOV, or OGV.`
+      return `${file.name}: use MP4, M4V, WebM, MOV, OGV, or MKV.`
     }
     if (!file.size) return `${file.name} is empty.`
     if (file.size > MAX_VIDEO_BYTES) return `${file.name} exceeds 100 MiB.`
