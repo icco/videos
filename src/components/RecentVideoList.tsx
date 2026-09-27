@@ -1,5 +1,6 @@
 "use client"
 
+import { Loading } from "@icco/react-common/Loading"
 import { useEffect, useState } from "react"
 
 export function RecentVideoList() {
@@ -39,7 +40,13 @@ export function RecentVideoList() {
     return () => controller.abort()
   }, [attempt])
 
-  if (loading) return <p role="status">Loading videos…</p>
+  if (loading)
+    return (
+      <div role="status" className="flex items-center gap-2">
+        <Loading size="sm" />
+        <span>Loading videos…</span>
+      </div>
+    )
   if (error)
     return (
       <div role="alert">

@@ -10,7 +10,7 @@ export default function ErrorPage({
   reset: () => void
 }) {
   return (
-    <div className="mx-auto max-w-2xl space-y-6 px-6 py-20">
+    <div className="space-y-6 py-12">
       <h1 className="text-3xl font-bold">Something went wrong</h1>
       <div role="alert">
         <ErrorMessage
