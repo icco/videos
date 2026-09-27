@@ -37,6 +37,11 @@ const nextConfig: NextConfig = {
         destination: "https://natwelch.com/wiki/privacy-policy",
         permanent: true,
       },
+      {
+        source: "/feed.rss",
+        destination: site.feedUrl,
+        permanent: true,
+      },
     ]
   },
   async headers() {

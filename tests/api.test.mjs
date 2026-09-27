@@ -7,6 +7,8 @@ let listed = []
 let listingOptions
 let failWrite = 0
 let failList = false
+let lookedUp = []
+let failLookup = false
 
 mock.module("@google-cloud/storage", {
   namedExports: {
@@ -16,6 +18,11 @@ mock.module("@google-cloud/storage", {
         return {
           file(path) {
             return {
+              async exists() {
+                lookedUp.push(path)
+                if (failLookup) throw new Error("Storage unavailable")
+                return [listed.some((file) => file.name === path)]
+              },
               createWriteStream(options) {
                 const write = { path, options, chunks: [] }
                 writes.push(write)
@@ -45,14 +52,17 @@ process.env.GCP_BUCKET_NAME = "test-videos"
 delete process.env.VIDEO_PUBLIC_BASE_URL
 const { POST } = await import("../src/app/api/upload/route.ts")
 const { GET } = await import("../src/app/api/list/route.ts")
-const { videoUrl } = await import("../src/lib/storage.ts")
-const { validateVideos, MAX_BATCH_BYTES } = await import("../src/lib/videos.ts")
+const { getVideo, videoUrl } = await import("../src/lib/storage.ts")
+const { validateVideos, MAX_BATCH_BYTES, videoPagePath } =
+  await import("../src/lib/videos.ts")
 
 beforeEach(() => {
   writes = []
   listed = []
   failWrite = 0
   failList = false
+  lookedUp = []
+  failLookup = false
   delete process.env.VIDEO_PUBLIC_BASE_URL
 })
 
@@ -191,4 +201,45 @@ test("uses a configurable media origin and encodes object paths", () => {
     videoUrl("videos/2026/a b.mp4"),
     "https://cdn.example.com/media/videos/2026/a%20b.mp4"
   )
+})
+
+test("watch links preserve encoded filenames across storage and CDN prefixes", () => {
+  for (const base of [
+    "https://storage.googleapis.com/test-videos",
+    "https://cdn.example.com/media",
+  ]) {
+    process.env.VIDEO_PUBLIC_BASE_URL = base
+    assert.equal(
+      videoPagePath(videoUrl("videos/2025/a b#c.MOV")),
+      "/videos/2025/a%20b%23c.MOV"
+    )
+  }
+})
+
+test("looks up individual videos from past years and distinguishes missing files from storage errors", async () => {
+  const path = "videos/2025/a b.MOV"
+  listed = [{ name: path }]
+  assert.deepEqual(await getVideo("2025", "a b.MOV"), {
+    path,
+    url: "https://storage.googleapis.com/test-videos/videos/2025/a%20b.MOV",
+  })
+  assert.deepEqual(lookedUp, [path])
+  assert.equal(await getVideo("2025", "missing.mp4"), null)
+  failLookup = true
+  await assert.rejects(getVideo("2025", "a b.MOV"), /Storage unavailable/)
+})
+
+test("invalid watch paths never access storage", async () => {
+  for (const [year, filename] of [
+    ["invalid", "video.mp4"],
+    ["2025", ""],
+    ["2025", "readme.txt"],
+    ["2025", "../video.mp4"],
+    ["2025", "nested/video.mp4"],
+    ["2025", "nested\\video.mp4"],
+    ["2025", "video\0.mp4"],
+  ]) {
+    assert.equal(await getVideo(year, filename), null)
+  }
+  assert.deepEqual(lookedUp, [])
 })

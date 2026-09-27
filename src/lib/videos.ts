@@ -15,6 +15,23 @@ export function videoExtension(name: string): string {
   return name.slice(name.lastIndexOf(".")).toLowerCase()
 }
 
+export function videoPath(year: string, filename: string): string | null {
+  if (
+    !/^\d{4}$/.test(year) ||
+    !filename ||
+    /[/\\]/.test(filename) ||
+    filename.includes("\0") ||
+    !VIDEO_TYPES[videoExtension(filename)]
+  ) {
+    return null
+  }
+  return `videos/${year}/${filename}`
+}
+
+export function videoPagePath(url: string): string {
+  return `/videos/${new URL(url).pathname.split("/").slice(-2).join("/")}`
+}
+
 export function validateVideos(files: File[]): string | null {
   if (!files.length) return "Select at least one video."
   if (files.length > MAX_VIDEO_FILES)
