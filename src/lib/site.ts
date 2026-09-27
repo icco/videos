@@ -7,6 +7,7 @@ export const site = {
   description: "Upload, watch, and share videos.",
   url: "https://videos.natwelch.com",
   repository: "https://github.com/icco/videos",
+  feedUrl: "https://natwelch.com/feed.rss",
   navigation: [
     {
       name: "About",
@@ -19,8 +20,7 @@ export const site = {
   footer: {
     showRecurseCenter: true,
     showPrivacyPolicy: true,
-    // Social includes /feed.rss; enable after adding a feed to your project.
-    showSocial: false,
+    showSocial: true,
     // The shared rings use natwelch.com's membership IDs and fetch remote data.
     showRecurseRing: false,
     showXXIIVVRing: false,

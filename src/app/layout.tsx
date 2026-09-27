@@ -50,7 +50,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
       className={`${roboto.variable} ${robotoSlab.variable} ${robotoMono.variable}`}
       suppressHydrationWarning
     >
-      <body className="flex min-h-screen flex-col bg-base-100 font-sans text-base-content antialiased">
+      <body className="bg-base-100 font-sans text-base-content antialiased">
         <a
           href="#main"
           className="sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-50 focus:rounded focus:bg-base-100 focus:p-4"
@@ -65,7 +65,7 @@ export default function RootLayout({ children }: { children: ReactNode }) {
           <main
             id="main"
             tabIndex={-1}
-            className="mx-auto w-full max-w-xl flex-1 px-4 py-8"
+            className="mx-auto w-full max-w-xl px-4 py-8"
           >
             {children}
           </main>

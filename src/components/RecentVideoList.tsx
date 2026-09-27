@@ -1,7 +1,10 @@
 "use client"
 
 import { Loading } from "@icco/react-common/Loading"
+import Link from "next/link"
 import { useEffect, useState } from "react"
+
+import { videoPagePath } from "@/lib/videos"
 
 export function RecentVideoList() {
   const [videos, setVideos] = useState<string[]>([])
@@ -85,9 +88,9 @@ export function RecentVideoList() {
               to open the file.
             </video>
             <figcaption className="mt-2 truncate text-sm">
-              <a href={url} className="link" target="_blank" rel="noreferrer">
-                Open {name}
-              </a>
+              <Link href={videoPagePath(url)} className="link">
+                Watch {name}
+              </Link>
             </figcaption>
           </figure>
         )

@@ -8,6 +8,7 @@ A video uploader and gallery for `videos.natwelch.com`, following
 
 - Multi-file uploads to Google Cloud Storage under `videos/<UTC year>/<TSID>.<ext>`.
 - Current-year gallery, newest first, refreshed after uploads.
+- Shareable watch pages at `/videos/<year>/<filename>`, including past years.
 - Native video controls, inline mobile playback, and links to original files.
 - MP4, M4V, WebM, MOV, and OGV uploads; up to 10 files and 100 MiB per batch.
 - Loading, empty, retry, upload-in-progress, success, and failure states.
@@ -42,7 +43,7 @@ service account in production, local gcloud credentials, or
 | `GCP_BUCKET_NAME`       | `icco-cloud`                              | Bucket for uploads and listing           |
 | `VIDEO_PUBLIC_BASE_URL` | `https://storage.googleapis.com/<bucket>` | Public bucket/CDN URL, without `videos/` |
 
-The runtime identity needs object create/list permissions. The bucket or CDN must
+The runtime identity needs object create/list/get permissions. The bucket or CDN must
 allow viewers to read uploaded objects; the app does not change bucket IAM.
 Direct GCS URLs support range requests for playback and seeking. A custom CDN
 must also support video content types and range requests. Set

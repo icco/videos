@@ -1,6 +1,7 @@
 import assert from "node:assert/strict"
 import { spawn } from "node:child_process"
 import { once } from "node:events"
+import { createServer } from "node:http"
 import { setTimeout } from "node:timers/promises"
 
 import { JSDOM } from "jsdom"
@@ -9,11 +10,42 @@ import { JSDOM } from "jsdom"
 const external = process.env.SMOKE_BASE_URL
 const port = process.env.SMOKE_PORT || "18080"
 const base = external || `http://127.0.0.1:${port}`
+const fixturePath = "videos/2025/smoke video.mp4"
+// Supply read-only GCS metadata locally so watch pages need no credentials.
+const storage = external
+  ? null
+  : createServer((request, response) => {
+      const url = new URL(request.url, "http://localhost")
+      const found =
+        request.method === "GET" &&
+        decodeURIComponent(url.pathname) ===
+          `/storage/v1/b/smoke-videos/o/${fixturePath}`
+      response.writeHead(found ? 200 : 404, {
+        "Content-Type": "application/json",
+      })
+      response.end(
+        JSON.stringify(
+          found
+            ? { name: fixturePath, bucket: "smoke-videos" }
+            : { error: { code: 404, message: "Not found" } }
+        )
+      )
+    })
+if (storage) {
+  storage.listen(0, "127.0.0.1")
+  await once(storage, "listening")
+}
 const server = external
   ? null
   : spawn(process.execPath, ["scripts/start.mjs"], {
       stdio: "inherit",
-      env: { ...process.env, NODE_ENV: "production", PORT: port },
+      env: {
+        ...process.env,
+        NODE_ENV: "production",
+        PORT: port,
+        GCP_BUCKET_NAME: "smoke-videos",
+        STORAGE_EMULATOR_HOST: `http://127.0.0.1:${storage.address().port}/storage/v1`,
+      },
     })
 const exited = server ? once(server, "exit") : null
 
@@ -70,7 +102,12 @@ try {
   assert.ok(document.querySelector('header a[aria-label="About"] svg'))
   assert.ok(document.querySelector('header input[type="checkbox"]'))
   assert.ok(document.querySelector('footer a[title="Source Code"]'))
+  assert.ok(document.querySelector('footer a[title="GitHub"]'))
+  assert.ok(document.querySelector('footer a[title="RSS Feed"]'))
   assert.match(document.querySelector("footer").textContent, /Nat Welch/)
+  const feed = await fetch(`${base}/feed.rss`, { redirect: "manual" })
+  assert.equal(feed.status, 308)
+  assert.equal(feed.headers.get("location"), "https://natwelch.com/feed.rss")
   for (const theme of ["light", "dark"]) {
     const themed = await fetch(base, { headers: { cookie: `theme=${theme}` } })
     assert.equal(themed.status, 200)
@@ -103,6 +140,42 @@ try {
   assert.equal(sitemap.status, 200)
   assert.match(await sitemap.text(), /<urlset/)
   assert.equal((await fetch(`${base}/icon.svg`)).status, 200)
+  async function checkMissingVideo(path) {
+    const response = await fetch(`${base}${path}`)
+    // Next.js can send the loading shell before resolving notFound().
+    assert.ok([200, 404].includes(response.status))
+    const html = await response.text()
+    const document = new JSDOM(html).window.document
+    assert.ok(document.querySelector('meta[name="robots"][content="noindex"]'))
+    assert.match(html, /Page not found/)
+    assert.equal(document.querySelector("video"), null)
+  }
+  await checkMissingVideo("/videos/invalid/video.mp4")
+  if (storage) {
+    const watchPath = "/videos/2025/smoke%20video.mp4"
+    const watch = await fetch(`${base}${watchPath}`)
+    assert.equal(watch.status, 200)
+    const watchDocument = new JSDOM(await watch.text()).window.document
+    assert.equal(watchDocument.querySelectorAll("main").length, 1)
+    assert.equal(
+      watchDocument.querySelector("h1").textContent,
+      "smoke video.mp4"
+    )
+    const player = watchDocument.querySelector("video[controls][playsinline]")
+    assert.ok(player)
+    assert.equal(player.getAttribute("preload"), "metadata")
+    assert.ok(player.getAttribute("src").endsWith(watchPath))
+    assert.equal(
+      watchDocument.querySelector('a[target="_blank"][class="link"]').href,
+      player.getAttribute("src")
+    )
+    assert.ok(watchDocument.querySelector('a[href="/"][class="link"]'))
+    assert.equal(
+      watchDocument.querySelector('link[rel="canonical"]').href,
+      `https://videos.natwelch.com${watchPath}`
+    )
+    await checkMissingVideo("/videos/2025/missing.mp4")
+  }
   const missing = await fetch(`${base}/this-page-does-not-exist`)
   assert.equal(missing.status, 404)
   const missingDocument = new JSDOM(await missing.text()).window.document
@@ -117,4 +190,5 @@ try {
     await exited
     globalThis.clearTimeout(forceKill)
   }
+  if (storage) await new Promise((resolve) => storage.close(resolve))
 }
