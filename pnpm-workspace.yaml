@@ -1,6 +1,9 @@
 allowBuilds:
   sharp: true
   unrs-resolver: true
+overrides:
+  # Gaxios 6 uses the CommonJS v4 API, supported by the patched UUID 11 release.
+  "gaxios@6>uuid": 11.1.1
 minimumReleaseAgeExclude:
   - "@next/env@16.3.6"
   - "@next/eslint-plugin-next@16.3.6"
