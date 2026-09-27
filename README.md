@@ -12,24 +12,28 @@ A video uploader and index for `videos.natwelch.com`, following
 - Native video controls, inline mobile playback, and direct video links on watch pages.
 - Watch-page streaming with a player-shaped loading skeleton.
 - MP4, M4V, WebM, MOV, OGV, and MKV uploads; up to 10 files and 100 MiB per batch.
-- Automatic MKV-to-MP4 conversion with H.264 video, AAC audio, and fast-start playback.
+- Automatic conversion of every upload to WebM with AV1 video and Opus audio.
 - Empty, retry, upload-in-progress, success, and failure states.
 - Shared header/footer, light/dark themes, and Web Vitals, like the photos site.
 - Strict TypeScript, CI, CodeQL, Dependabot, and a non-root standalone Docker image.
 
-New MKV uploads are converted with FFmpeg before being saved as `.mp4` files.
+Every new upload, including MP4 and WebM, is converted with FFmpeg before being
+saved as a `.webm` file.
 Conversion uses the first video track and first audio track (if present), with
-H.264/yuv420p video and stereo AAC audio for broad browser support. Subtitles and
-additional tracks are omitted; only the converted MP4 is stored. MP4 metadata is
-moved to the start of the file so playback can begin before the full download.
-Other formats are stored as uploaded, and existing MKV files remain accessible.
-Their playback depends on the browser, container, and codec.
+AV1/yuv420p video and stereo Opus audio. Subtitles and additional tracks are
+omitted; only the converted WebM is stored. The seek index is moved to the front
+of the file. Frames are padded to even dimensions and at least 64×64 pixels for
+SVT-AV1 compatibility. Encoding uses SVT-AV1 preset 8, CRF 30, and 128 kbps audio.
+WebM with AV1/Opus offers efficient compression using open codecs; see
+[MDN's codec recommendations](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/Video_codecs#recommendations_for_the_web).
+Playback requires AV1 support, which is limited on older Apple devices.
+Previously stored files remain accessible in their existing formats.
 
 ## Development
 
 Use Node 26 and pnpm 11.2.2.
 
-Install FFmpeg (including `ffprobe` for tests) with the `libx264` encoder available:
+Install FFmpeg (including `ffprobe` for tests) with `libsvtav1` and `libopus` encoders:
 `brew install ffmpeg` on macOS or `sudo apt-get install ffmpeg` on Debian/Ubuntu.
 The Docker runtime includes FFmpeg.
 
@@ -73,10 +77,10 @@ because the media CSP is generated at build time.
 The uploader follows photos' deployment model and has no built-in login. Put it
 behind your existing access-controlled ingress if uploads should be private.
 Enforce a 101 MiB request-body limit at the ingress, including chunked requests,
-and allow enough request time for uploads and conversion. MKV conversion runs
+and allow enough request time for uploads and conversion. Video conversion runs
 synchronously, one file at a time, with a five-minute timeout per file; the
 response arrives after conversion and storage finish. Provide writable temporary
-storage for both the source MKV and converted MP4. Temporary files are removed
+storage for both the source video and converted WebM. Temporary files are removed
 after success, failure, or cancellation. Multipart parsing buffers the request;
 the application validates the 100 MiB source batch limit and streams files to GCS
 without making an additional whole-file buffer. Converted output may differ in

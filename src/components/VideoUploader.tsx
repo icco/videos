@@ -73,9 +73,8 @@ export function VideoUploader() {
         />
         <p id="upload-help" className="text-sm opacity-75">
           MP4, M4V, WebM, MOV, OGV, or MKV. Up to 10 files and 100 MiB per
-          batch. MKV files are automatically converted to MP4 (H.264/AAC) before
-          saving. Processing can take a few minutes. Other formats play
-          according to your browser and the video codec.
+          batch. Every video is automatically converted to WebM (AV1/Opus)
+          before saving. Processing can take a few minutes.
         </p>
         <button
           type="submit"

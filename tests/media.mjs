@@ -3,11 +3,20 @@ import { promisify } from "node:util"
 
 const execFileAsync = promisify(execFile)
 
-export async function createMkv({
-  audio = true,
-  width = 32,
-  height = 24,
-} = {}) {
+const FORMATS = {
+  ".mp4": ["mp4", "mpeg4", "aac"],
+  ".m4v": ["ipod", "mpeg4", "aac"],
+  ".mov": ["mov", "mpeg4", "aac"],
+  ".webm": ["webm", "libvpx-vp9", "libopus"],
+  ".ogv": ["ogg", "libvpx", "libopus"],
+  ".mkv": ["matroska", "ffv1", "pcm_s16le"],
+}
+
+export async function createVideo(
+  extension = ".mkv",
+  { audio = true, width = 32, height = 24 } = {}
+) {
+  const [format, videoCodec, audioCodec] = FORMATS[extension]
   const { stdout } = await execFileAsync(
     "ffmpeg",
     [
@@ -22,13 +31,16 @@ export async function createMkv({
       "-t",
       "0.2",
       "-c:v",
-      "ffv1",
+      videoCodec,
       "-pix_fmt",
-      "yuv444p",
+      extension === ".mkv" ? "yuv444p" : "yuv420p",
       "-c:a",
-      "pcm_s16le",
+      audioCodec,
+      ...(["mp4", "ipod", "mov"].includes(format)
+        ? ["-movflags", "frag_keyframe+empty_moov"]
+        : []),
       "-f",
-      "matroska",
+      format,
       "pipe:1",
     ],
     { encoding: "buffer" }

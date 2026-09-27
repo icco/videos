@@ -5,7 +5,8 @@ import { join } from "node:path"
 import { after, before, test } from "node:test"
 
 import { withPreparedVideo } from "../src/lib/transcode.ts"
-import { createMkv, probeVideo } from "./media.mjs"
+import { VIDEO_TYPES } from "../src/lib/videos.ts"
+import { createVideo, probeVideo } from "./media.mjs"
 
 const previousTmpdir = process.env.TMPDIR
 let directory
@@ -21,29 +22,31 @@ after(async () => {
   await rm(directory, { recursive: true, force: true })
 })
 
-test("converts silent odd-sized MKV to fast-start H.264 MP4 and removes temporary files", async () => {
-  const input = await createMkv({ audio: false, width: 33, height: 25 })
+test("converts silent odd-sized video to AV1 WebM and removes temporary files", async () => {
+  const input = await createVideo(".mkv", {
+    audio: false,
+    width: 33,
+    height: 25,
+  })
   await withPreparedVideo(
     new File([input], "silent.mkv"),
     async (stream, ext) => {
-      assert.equal(ext, ".mp4")
+      assert.equal(ext, ".webm")
       const bytes = Buffer.concat(await Array.fromAsync(stream))
       const { streams, format } = probeVideo(bytes)
-      assert.match(format.format_name, /mp4/)
+      assert.match(format.format_name, /webm/)
       assert.equal(streams.length, 1)
-      assert.equal(streams[0].codec_name, "h264")
+      assert.equal(streams[0].codec_name, "av1")
       assert.equal(streams[0].pix_fmt, "yuv420p")
-      assert.equal(streams[0].width, 34)
-      assert.equal(streams[0].height, 26)
-      assert.ok(bytes.indexOf("moov") > 0)
-      assert.ok(bytes.indexOf("moov") < bytes.indexOf("mdat"))
+      assert.equal(streams[0].width, 64)
+      assert.equal(streams[0].height, 64)
     }
   )
   assert.deepEqual(await readdir(directory), [])
 })
 
 test("removes converted files when the upload fails", async () => {
-  const input = await createMkv()
+  const input = await createVideo()
   await assert.rejects(
     withPreparedVideo(new File([input], "video.mkv"), async (stream) => {
       for await (const chunk of stream) {
@@ -56,19 +59,33 @@ test("removes converted files when the upload fails", async () => {
   assert.deepEqual(await readdir(directory), [])
 })
 
-test("rejects invalid MKV and cancelled processing without uploading or leaving temporary files", async () => {
-  for (const signal of [undefined, AbortSignal.abort()]) {
+test("rejects invalid video in every accepted format without uploading or leaving temporary files", async () => {
+  for (const extension of Object.keys(VIDEO_TYPES)) {
     let uploaded = false
     await assert.rejects(
       withPreparedVideo(
-        new File(["invalid video"], "broken.mkv"),
+        new File(["invalid video"], `broken${extension}`),
         async () => {
           uploaded = true
-        },
-        signal
+        }
       )
     )
     assert.equal(uploaded, false)
     assert.deepEqual(await readdir(directory), [])
   }
+})
+
+test("cleans up cancelled processing without uploading", async () => {
+  let uploaded = false
+  await assert.rejects(
+    withPreparedVideo(
+      new File([await createVideo(".mp4")], "video.mp4"),
+      async () => {
+        uploaded = true
+      },
+      AbortSignal.abort()
+    )
+  )
+  assert.equal(uploaded, false)
+  assert.deepEqual(await readdir(directory), [])
 })
