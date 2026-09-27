@@ -1,18 +1,18 @@
 "use client"
 
+import { useRouter } from "next/navigation"
 import { type FormEvent, useRef, useState } from "react"
 
-import { RecentVideoList } from "@/components/RecentVideoList"
 import { validateVideos, VIDEO_ACCEPT } from "@/lib/videos"
 
-export function VideoGallery() {
+export function VideoUploader() {
+  const router = useRouter()
   const fileInput = useRef<HTMLInputElement>(null)
   const [uploading, setUploading] = useState(false)
   const [notice, setNotice] = useState<{
     message: string
     error: boolean
   } | null>(null)
-  const [reload, setReload] = useState(0)
 
   async function upload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -46,7 +46,7 @@ export function VideoGallery() {
       })
     } finally {
       setUploading(false)
-      setReload((value) => value + 1)
+      router.refresh()
     }
   }
 
@@ -92,12 +92,6 @@ export function VideoGallery() {
           {notice.message}
         </p>
       )}
-      <section className="mt-8" aria-labelledby="recent-videos">
-        <h2 id="recent-videos" className="mb-4 text-xl font-semibold">
-          This year’s videos
-        </h2>
-        <RecentVideoList key={reload} />
-      </section>
     </>
   )
 }
