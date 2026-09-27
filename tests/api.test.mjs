@@ -2,6 +2,8 @@ import assert from "node:assert/strict"
 import { Writable } from "node:stream"
 import { beforeEach, mock, test } from "node:test"
 
+import { createMkv, probeVideo } from "./media.mjs"
+
 let writes = []
 let listed = []
 let listingOptions
@@ -98,6 +100,46 @@ test("uploads multiple videos with unique paths, exact bytes, and playback MIME 
   assert.equal(writes[1].options.metadata.contentType, "video/webm")
   assert.equal(Buffer.concat(writes[0].chunks).toString(), "first video")
   assert.equal(Buffer.concat(writes[1].chunks).toString(), "second video")
+})
+
+test("converts MKV uploads to H.264/AAC MP4 with matching storage metadata and watch URLs", async () => {
+  const input = await createMkv()
+  const response = await POST(
+    request([
+      new File([input], "holiday.MKV", { type: "application/octet-stream" }),
+    ])
+  )
+  assert.equal(response.status, 200)
+  const result = await response.json()
+  assert.equal(result.files.length, 1)
+  assert.match(result.files[0].path, /\.mp4$/)
+  assert.equal(writes[0].options.metadata.contentType, "video/mp4")
+  const { streams } = probeVideo(Buffer.concat(writes[0].chunks))
+  assert.deepEqual(
+    streams.map((stream) => stream.codec_name),
+    ["h264", "aac"]
+  )
+  assert.equal(streams[0].pix_fmt, "yuv420p")
+  assert.equal(streams[1].channels, 2)
+  listed = [{ name: result.files[0].path }]
+  assert.deepEqual((await (await GET()).json()).videos, [result.files[0].url])
+  const [, year, filename] = result.files[0].path.split("/")
+  assert.deepEqual(await getVideo(year, filename), result.files[0])
+})
+
+test("conversion failures report already saved files without storing a broken MKV", async () => {
+  const response = await POST(
+    request([
+      new File(["video"], "good.mp4"),
+      new File(["invalid"], "broken.mkv"),
+    ])
+  )
+  assert.equal(response.status, 500)
+  const result = await response.json()
+  assert.equal(result.files.length, 1)
+  assert.match(result.message, /1 video\(s\) were saved/)
+  assert.equal(writes.length, 1)
+  assert.match(writes[0].path, /\.mp4$/)
 })
 
 test("rejects empty, non-file, unsupported, and mixed batches before any writes", async () => {

@@ -73,15 +73,16 @@ export function VideoUploader() {
         />
         <p id="upload-help" className="text-sm opacity-75">
           MP4, M4V, WebM, MOV, OGV, or MKV. Up to 10 files and 100 MiB per
-          batch. Playback depends on your browser and the video codec; MP4
-          (H.264) and WebM work best.
+          batch. MKV files are automatically converted to MP4 (H.264/AAC) before
+          saving. Processing can take a few minutes. Other formats play
+          according to your browser and the video codec.
         </p>
         <button
           type="submit"
           disabled={uploading}
           className="btn self-start btn-primary"
         >
-          {uploading ? "Uploading…" : "Upload videos"}
+          {uploading ? "Uploading and processing…" : "Upload videos"}
         </button>
       </form>
       {notice && (

@@ -69,7 +69,7 @@ export default async function VideoPage({ params }: Props) {
       </video>
       <p className="mt-4">
         <a href={video.url} className="link" target="_blank" rel="noreferrer">
-          Open original file
+          Open video file
         </a>
       </p>
     </>
