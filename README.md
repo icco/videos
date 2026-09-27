@@ -1,17 +1,18 @@
 # Videos
 
-A video uploader and gallery for `videos.natwelch.com`, following
+A video uploader and index for `videos.natwelch.com`, following
 [icco/photos](https://github.com/icco/photos) and built on
 [icco/nextjs-template](https://github.com/icco/nextjs-template).
 
 ## Features
 
 - Multi-file uploads to Google Cloud Storage under `videos/<UTC year>/<TSID>.<ext>`.
-- Current-year gallery, newest first, refreshed after uploads.
+- Server-rendered current-year filename index, newest first, refreshed after uploads.
 - Shareable watch pages at `/videos/<year>/<filename>`, including past years.
-- Native video controls, inline mobile playback, and links to original files.
+- Native video controls, inline mobile playback, and original-file links on watch pages.
+- Watch-page streaming with a player-shaped loading skeleton.
 - MP4, M4V, WebM, MOV, and OGV uploads; up to 10 files and 100 MiB per batch.
-- Loading, empty, retry, upload-in-progress, success, and failure states.
+- Empty, retry, upload-in-progress, success, and failure states.
 - Shared header/footer, light/dark themes, and Web Vitals, like the photos site.
 - Strict TypeScript, CI, CodeQL, Dependabot, and a non-root standalone Docker image.
 

@@ -1,19 +1,11 @@
-import { videoBucket, videoPrefix, videoUrl } from "../../../lib/storage.ts"
-import { VIDEO_TYPES, videoExtension } from "../../../lib/videos.ts"
+import { listVideos } from "../../../lib/storage.ts"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
 
 export async function GET() {
   try {
-    const [files] = await videoBucket().getFiles({
-      autoPaginate: true,
-      prefix: videoPrefix(),
-    })
-    const videos = files
-      .filter((file) => VIDEO_TYPES[videoExtension(file.name)])
-      .sort((a, b) => b.name.localeCompare(a.name))
-      .map((file) => videoUrl(file.name))
+    const videos = await listVideos()
     return Response.json(
       { videos },
       { headers: { "Cache-Control": "no-store" } }

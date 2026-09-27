@@ -1,6 +1,6 @@
 import { Storage } from "@google-cloud/storage"
 
-import { videoPath } from "./videos.ts"
+import { VIDEO_TYPES, videoExtension, videoPath } from "./videos.ts"
 
 export function videoBucket() {
   return new Storage({
@@ -18,6 +18,17 @@ export function videoUrl(path: string): string {
 
 export function videoPrefix(): string {
   return `videos/${new Date().getUTCFullYear()}/`
+}
+
+export async function listVideos(): Promise<string[]> {
+  const [files] = await videoBucket().getFiles({
+    autoPaginate: true,
+    prefix: videoPrefix(),
+  })
+  return files
+    .filter((file) => VIDEO_TYPES[videoExtension(file.name)])
+    .sort((a, b) => b.name.localeCompare(a.name))
+    .map((file) => videoUrl(file.name))
 }
 
 export async function getVideo(year: string, filename: string) {
