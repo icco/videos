@@ -20,6 +20,8 @@ export function videoPrefix(): string {
   return `videos/${new Date().getUTCFullYear()}/`
 }
 
+export const VIDEO_QUEUE_PREFIX = "videos/pending/"
+
 export async function listVideos(): Promise<string[]> {
   const [files] = await videoBucket().getFiles({
     autoPaginate: true,
