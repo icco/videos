@@ -7,3 +7,14 @@ A video uploader and gallery at [videos.natwelch.com](https://videos.natwelch.co
 - Shows the current year's videos newest first, with shareable watch pages for videos from any year.
 
 Built with Next.js, React, and TypeScript.
+
+## Development
+
+Use Node 26 and the pnpm version pinned in `package.json`. Configure a GitHub
+Packages token with `read:packages` access to `@icco/react-common` in your
+user-level `~/.npmrc`, then run `pnpm install` and `pnpm dev`. The repository's
+`.npmrc` only routes `@icco` packages to GitHub Packages, so local installs and
+upgrades inherit your user-level credentials.
+
+CI configures authentication through `actions/setup-node` and `NODE_AUTH_TOKEN`.
+Docker builds accept the token through the `npm_token` BuildKit secret.

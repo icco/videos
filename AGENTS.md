@@ -11,7 +11,7 @@ native video playback. Storage configuration belongs in `src/lib/storage.ts`.
 - Prefer Server Components; add `"use client"` only for browser APIs or interactivity.
 - Site identity and canonical origin live in `src/lib/site.ts`.
 - Shared UI comes from `@icco/react-common` component subpaths. Configure navigation, footer features, and analytics in `src/lib/site.ts`; the root layout owns the main landmark.
-- Package installs need `NODE_AUTH_TOKEN` with GitHub Packages read access; Docker accepts it via the `npm_token` BuildKit secret.
+- Local package installs use GitHub Packages credentials from your user-level `~/.npmrc`. CI supplies `NODE_AUTH_TOKEN`; Docker accepts it via the `npm_token` BuildKit secret and creates a temporary user-level auth configuration.
 - Use two spaces, double quotes, and no semicolons; Prettier sorts Tailwind classes and ESLint sorts imports.
 - Run `pnpm check`, `pnpm test`, `pnpm build`, and `pnpm test:smoke` before submitting changes.
 - Keep secrets server-side and out of git and Docker build arguments.
