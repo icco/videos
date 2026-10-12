@@ -7,7 +7,9 @@ RUN npm install --global pnpm@11.2.2
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml .npmrc ./
 RUN --mount=type=secret,id=npm_token,env=NODE_AUTH_TOKEN,required=true \
     --mount=type=cache,id=pnpm,target=/pnpm/store \
-    pnpm install --frozen-lockfile --store-dir=/pnpm/store
+    printf '%s\n' '//npm.pkg.github.com/:_authToken=${NODE_AUTH_TOKEN}' > "$HOME/.npmrc" && \
+    pnpm install --frozen-lockfile --store-dir=/pnpm/store && \
+    rm "$HOME/.npmrc"
 
 FROM deps AS builder
 COPY . .
