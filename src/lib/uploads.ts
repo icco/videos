@@ -86,7 +86,11 @@ export async function withUploadedVideos<T>(
   )
   parser.on("file", (field, stream, { filename }) => {
     stream.on("error", () => {}) // The parser and write pipeline report failures.
-    if (field !== "video" || !VIDEO_TYPES[videoExtension(filename)]) {
+    if (
+      field !== "video" ||
+      !filename ||
+      !VIDEO_TYPES[videoExtension(filename)]
+    ) {
       stream.resume()
       reject(new UploadError("Each video must be a supported video file."))
       return
