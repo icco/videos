@@ -89,6 +89,31 @@ test("streams split multipart boundaries to disk with exact bytes at file and ba
   assert.deepEqual(await readdir(directory), [])
 })
 
+test("rejects binary file parts without a filename before consuming the batch", async () => {
+  const req = new Request("http://localhost/api/upload", {
+    method: "POST",
+    headers: { "Content-Type": "multipart/form-data; boundary=upload" },
+    body: [
+      "--upload",
+      'Content-Disposition: form-data; name="video"',
+      "Content-Type: application/octet-stream",
+      "",
+      "video bytes",
+      "--upload--",
+      "",
+    ].join("\r\n"),
+  })
+  let consumed = false
+  await assert.rejects(
+    withUploadedVideos(req, async () => {
+      consumed = true
+    }),
+    new UploadError("Each video must be a supported video file.")
+  )
+  assert.equal(consumed, false)
+  assert.deepEqual(await readdir(directory), [])
+})
+
 test("rejects oversized files and batches received without content-length", async () => {
   for (const files of [
     [new File([Buffer.alloc(129)], "large.mkv")],
