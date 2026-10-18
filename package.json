@@ -30,7 +30,7 @@
     "@icco/react-common": "^2026.11011.1",
     "@wrksz/themes": "^2.0.3",
     "busboy": "^1.6.0",
-    "jsdom": "^30.1.2",
+    "jsdom": "^30.1.3",
     "next": "^16.4.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
