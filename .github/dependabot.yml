@@ -7,20 +7,35 @@ updates:
     schedule:
       interval: weekly
     groups:
-      next:
-        patterns: [next, eslint-config-next, "@next/*"]
-      react:
-        patterns: [react, react-dom, "@types/react", "@types/react-dom"]
-      tailwind:
-        patterns: [tailwindcss, "@tailwindcss/*", daisyui]
+      npm:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps-dev)
+    cooldown:
+      default-days: 7
   - package-ecosystem: docker
     directory: /
     schedule:
       interval: weekly
+    commit-message:
+      prefix: chore(deps)
+    cooldown:
+      default-days: 7
+    groups:
+      docker:
+        patterns:
+          - '*'
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
     groups:
-      codeql:
-        patterns: ["github/codeql-action/*"]
+      github-actions:
+        patterns:
+          - '*'
+    commit-message:
+      prefix: chore(deps)
+    cooldown:
+      default-days: 7
