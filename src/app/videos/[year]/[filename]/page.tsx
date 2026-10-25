@@ -48,6 +48,7 @@ export default async function VideoPage({ params }: Props) {
         controls
         playsInline
         preload="metadata"
+        poster={video.posterUrl}
         src={video.url}
         aria-label={filename}
         className="aspect-video w-full rounded-lg bg-black"

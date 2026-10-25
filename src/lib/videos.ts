@@ -22,6 +22,10 @@ export function videoExtension(name: string): string {
   return name.slice(name.lastIndexOf(".")).toLowerCase()
 }
 
+export function videoPosterPath(path: string): string {
+  return `${path.slice(0, -videoExtension(path).length)}.jpg`
+}
+
 export function videoPath(year: string, filename: string): string | null {
   if (
     !/^\d{4}$/.test(year) ||
@@ -63,7 +67,7 @@ export function formatBytes(bytes: number): string {
 
 export function videoMetadata(
   filename: string,
-  video: { url: string; metadata?: VideoRecord | null }
+  video: { url: string; posterUrl?: string; metadata?: VideoRecord | null }
 ): Metadata {
   const url = new URL(videoPagePath(video.url), site.url).href
   const description =
@@ -79,8 +83,14 @@ export function videoMetadata(
       url,
       siteName: site.name,
       videos: [{ url: video.url }],
+      ...(video.posterUrl ? { images: [{ url: video.posterUrl }] } : {}),
     },
-    twitter: { card: "summary", title: filename, description },
+    twitter: {
+      card: video.posterUrl ? "summary_large_image" : "summary",
+      title: filename,
+      description,
+      ...(video.posterUrl ? { images: [video.posterUrl] } : {}),
+    },
   }
 }
 

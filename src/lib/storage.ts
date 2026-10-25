@@ -1,7 +1,12 @@
 import { Storage } from "@google-cloud/storage"
 
 import { getVideoMetadata } from "./db.ts"
-import { VIDEO_TYPES, videoExtension, videoPath } from "./videos.ts"
+import {
+  VIDEO_TYPES,
+  videoExtension,
+  videoPath,
+  videoPosterPath,
+} from "./videos.ts"
 
 export function videoBucket() {
   return new Storage({
@@ -37,14 +42,18 @@ export async function listVideos(): Promise<string[]> {
 export async function getVideo(year: string, filename: string) {
   const path = videoPath(year, filename)
   if (!path) return null
-  const [[exists], metadata] = await Promise.all([
-    videoBucket().file(path).exists(),
+  const posterPath = videoPosterPath(path)
+  const bucket = videoBucket()
+  const [[exists], [posterExists], metadata] = await Promise.all([
+    bucket.file(path).exists(),
+    bucket.file(posterPath).exists(),
     getVideoMetadata(path),
   ])
   if (!exists) return null
   return {
     path,
     url: videoUrl(path),
+    ...(posterExists ? { posterUrl: videoUrl(posterPath) } : {}),
     ...(metadata ? { metadata } : {}),
   }
 }

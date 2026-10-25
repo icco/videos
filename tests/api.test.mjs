@@ -261,10 +261,24 @@ test("accepts durable uploads before processing and converts every format after 
   client.abort()
   await processPendingVideos()
   assert.deepEqual((await (await getJobs()).json()).jobs, [])
-  const converted = writes.slice(files.length)
+  const outputs = writes.slice(files.length)
+  assert.equal(outputs.length, files.length * 2)
+  const converted = outputs.filter((write) => write.path.endsWith(".webm"))
+  const posters = outputs.filter((write) => write.path.endsWith(".jpg"))
   assert.equal(converted.length, files.length)
+  assert.equal(posters.length, files.length)
   for (const [index, write] of converted.entries()) {
-    const file = { path: write.path, url: videoUrl(write.path) }
+    const posterWrite = posters[index]
+    const posterPath = write.path.replace(/\.webm$/, ".jpg")
+    assert.equal(posterWrite.path, posterPath)
+    assert.equal(posterWrite.options.metadata.contentType, "image/jpeg")
+    const posterStreams = probeVideo(Buffer.concat(posterWrite.chunks)).streams
+    assert.equal(posterStreams[0].codec_name, "mjpeg")
+    const file = {
+      path: write.path,
+      url: videoUrl(write.path),
+      posterUrl: videoUrl(posterPath),
+    }
     assert.match(
       file.path,
       new RegExp(`^videos/${new Date().getUTCFullYear()}/[0-9A-Z]+\\.webm$`)
@@ -288,6 +302,7 @@ test("accepts durable uploads before processing and converts every format after 
     const stored = await getVideo(year, filename)
     assert.equal(stored.path, file.path)
     assert.equal(stored.url, file.url)
+    assert.equal(stored.posterUrl, file.posterUrl)
     assert.ok(stored.metadata, "stores extracted video metadata in postgres")
     assert.equal(stored.metadata.originalName, files[index].name)
     assert.equal(
@@ -346,7 +361,10 @@ test("failed processing can be retried without uploading again or duplicating th
   await processPendingVideos()
   assert.equal(writes[2].path, outputPath)
   assert.deepEqual((await (await getJobs()).json()).jobs, [])
-  assert.deepEqual([...objects.keys()], [outputPath])
+  assert.deepEqual(
+    [...objects.keys()],
+    [outputPath, outputPath.replace(/\.webm$/, ".jpg")]
+  )
   assert.equal(
     (
       await retryJob(new Request("http://localhost"), {
@@ -374,13 +392,13 @@ test("recovers expired processing leases while leaving active workers alone", as
   await processPendingVideos()
   assert.equal(objects.has(`videos/pending/${jobs[0].id}`), false)
   assert.equal(objects.has(`videos/pending/${jobs[1].id}`), true)
-  assert.equal(writes.length, 3)
+  assert.equal(writes.length, 4)
 })
 
 test("concurrent workers claim a queued source only once", async () => {
   await POST(request([new File([await createVideo()], "video.mkv")]))
   await Promise.all([processPendingVideos(), processPendingVideos()])
-  assert.equal(writes.length, 2)
+  assert.equal(writes.length, 3)
   assert.deepEqual((await (await getJobs()).json()).jobs, [])
 })
 
@@ -507,15 +525,45 @@ test("watch links preserve encoded filenames across storage and CDN prefixes", (
 
 test("looks up individual videos from past years and distinguishes missing files from storage errors", async () => {
   const path = "videos/2025/a b.MOV"
+  const posterPath = "videos/2025/a b.jpg"
   listed = [{ name: path }]
   assert.deepEqual(await getVideo("2025", "a b.MOV"), {
     path,
     url: "https://storage.googleapis.com/test-videos/videos/2025/a%20b.MOV",
   })
-  assert.deepEqual(lookedUp, [path])
+  assert.deepEqual(lookedUp, [path, posterPath])
+  listed = [{ name: path }, { name: posterPath }]
+  assert.deepEqual(await getVideo("2025", "a b.MOV"), {
+    path,
+    url: "https://storage.googleapis.com/test-videos/videos/2025/a%20b.MOV",
+    posterUrl:
+      "https://storage.googleapis.com/test-videos/videos/2025/a%20b.jpg",
+  })
   assert.equal(await getVideo("2025", "missing.mp4"), null)
   failLookup = true
   await assert.rejects(getVideo("2025", "a b.MOV"), /Storage unavailable/)
+})
+
+test("includes social image metadata when a video thumbnail exists", async () => {
+  listed = [{ name: "videos/2025/clip.webm" }]
+  const withoutPoster = videoMetadata(
+    "clip.webm",
+    await getVideo("2025", "clip.webm")
+  )
+  assert.equal(withoutPoster.openGraph.images, undefined)
+  assert.equal(withoutPoster.twitter.card, "summary")
+  assert.equal(withoutPoster.twitter.images, undefined)
+
+  listed = [{ name: "videos/2025/clip.webm" }, { name: "videos/2025/clip.jpg" }]
+  const withPoster = videoMetadata(
+    "clip.webm",
+    await getVideo("2025", "clip.webm")
+  )
+  const expectedPoster =
+    "https://storage.googleapis.com/test-videos/videos/2025/clip.jpg"
+  assert.deepEqual(withPoster.openGraph.images, [{ url: expectedPoster }])
+  assert.equal(withPoster.twitter.card, "summary_large_image")
+  assert.deepEqual(withPoster.twitter.images, [expectedPoster])
 })
 
 test("persists technical metadata even when Gemini fails or is unconfigured", async () => {
