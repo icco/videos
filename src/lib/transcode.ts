@@ -144,41 +144,53 @@ export async function withPreparedVideo<T>(
     const audioStream = streams.find((s) => s.codec_type === "audio")
     const durationSeconds =
       Number(probed.format?.duration || videoStream?.duration || 0) || 0
+    const videoDuration = Number(videoStream?.duration || durationSeconds) || 0
     const timestamps =
-      durationSeconds >= 1
-        ? SAMPLE_POSITIONS.map((pos) => (durationSeconds * pos).toFixed(3))
+      videoDuration >= 1
+        ? SAMPLE_POSITIONS.map((pos) => (videoDuration * pos).toFixed(3))
         : ["0"]
-    const frames = await Promise.all(
-      timestamps.map(async (timestamp, index) => {
-        const framePath = join(directory, `frame-${index}.jpg`)
-        await execFileAsync(
-          "ffmpeg",
-          [
-            "-nostdin",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-ss",
-            timestamp,
-            "-i",
-            output,
-            "-map",
-            "0:V:0",
-            "-vf",
-            "scale='min(640,iw)':-2",
-            "-frames:v",
-            "1",
-            "-update",
-            "1",
-            "-q:v",
-            "4",
-            framePath,
-          ],
-          { signal, timeout: 60 * 1000, killSignal: "SIGKILL" }
-        )
-        return await readFile(framePath)
-      })
-    )
+    const sampledFrames = (
+      await Promise.all(
+        timestamps.map(async (timestamp, index) => {
+          const framePath = join(directory, `frame-${index}.jpg`)
+          try {
+            await execFileAsync(
+              "ffmpeg",
+              [
+                "-nostdin",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                timestamp,
+                "-i",
+                output,
+                "-map",
+                "0:V:0",
+                "-vf",
+                "scale='min(640,iw)':-2",
+                "-frames:v",
+                "1",
+                "-update",
+                "1",
+                "-q:v",
+                "4",
+                framePath,
+              ],
+              { signal, timeout: 60 * 1000, killSignal: "SIGKILL" }
+            )
+            return await readFile(framePath)
+          } catch (error) {
+            signal?.throwIfAborted()
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
+            return null
+          }
+        })
+      )
+    ).filter((frame) => frame !== null)
+    const frames = sampledFrames.length
+      ? sampledFrames
+      : [await readFile(poster)]
     stream = createReadStream(output)
     thumbnail = createReadStream(poster)
     return await upload(stream, ".webm", thumbnail, {

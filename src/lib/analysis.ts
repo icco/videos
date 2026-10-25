@@ -3,6 +3,7 @@ import { GoogleGenAI, Type } from "@google/genai"
 import type { PreparedVideoDetails } from "./transcode.ts"
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash-lite"
+const GEMINI_TIMEOUT_MS = 30 * 1000
 
 export interface VideoSummaryResult {
   summary: string | null
@@ -50,6 +51,9 @@ export async function summarizeVideo(
       `Duration: ${details.durationSeconds.toFixed(1)}s, Resolution: ${details.width}x${details.height}, Audio: ${details.audioCodec || "none"}`,
     ].join("\n")
 
+    const deadline = signal
+      ? AbortSignal.any([signal, AbortSignal.timeout(GEMINI_TIMEOUT_MS)])
+      : AbortSignal.timeout(GEMINI_TIMEOUT_MS)
     const response = await ai.models.generateContent({
       model: process.env.GEMINI_MODEL || DEFAULT_GEMINI_MODEL,
       contents: [
@@ -62,7 +66,7 @@ export async function summarizeVideo(
         { text: prompt },
       ],
       config: {
-        abortSignal: signal,
+        abortSignal: deadline,
         maxOutputTokens: 256,
         temperature: 0.2,
         thinkingConfig: { thinkingBudget: 0 },
