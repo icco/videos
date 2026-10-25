@@ -3,15 +3,18 @@ import type { NextConfig } from "next"
 import { site } from "./src/lib/site"
 
 const isDevelopment = process.env.NODE_ENV === "development"
+const mediaOrigin = new URL(
+  process.env.VIDEO_PUBLIC_BASE_URL || "https://storage.googleapis.com"
+).origin
 const contentSecurityPolicy = [
   "default-src 'self'",
   // Next.js static rendering embeds inline hydration scripts. Use nonces if
   // switching to a stricter CSP with dynamic rendering.
   `script-src 'self' 'unsafe-inline'${isDevelopment ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob:",
+  `img-src 'self' data: blob: ${mediaOrigin}`,
   "font-src 'self'",
-  `media-src 'self' ${new URL(process.env.VIDEO_PUBLIC_BASE_URL || "https://storage.googleapis.com").origin}`,
+  `media-src 'self' ${mediaOrigin}`,
   `connect-src 'self'${site.analyticsPath ? " https://reportd.natwelch.com" : ""}${isDevelopment ? " ws: wss:" : ""}`,
   "object-src 'none'",
   "base-uri 'self'",

@@ -1,3 +1,7 @@
+import type { Metadata } from "next"
+
+import { site } from "./site.ts"
+
 export const VIDEO_TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
   ".m4v": "video/mp4",
@@ -17,6 +21,10 @@ export function videoExtension(name: string): string {
   return name.slice(name.lastIndexOf(".")).toLowerCase()
 }
 
+export function videoPosterPath(path: string): string {
+  return `${path.slice(0, -videoExtension(path).length)}.jpg`
+}
+
 export function videoPath(year: string, filename: string): string | null {
   if (
     !/^\d{4}$/.test(year) ||
@@ -32,6 +40,34 @@ export function videoPath(year: string, filename: string): string | null {
 
 export function videoPagePath(url: string): string {
   return `/videos/${new URL(url).pathname.split("/").slice(-2).join("/")}`
+}
+
+export function videoMetadata(
+  filename: string,
+  video: { url: string; posterUrl?: string }
+): Metadata {
+  const url = new URL(videoPagePath(video.url), site.url).href
+  const description = `Watch ${filename} on ${site.name}.`
+  return {
+    title: filename,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      type: "video.other",
+      title: filename,
+      description,
+      url,
+      siteName: site.name,
+      videos: [{ url: video.url }],
+      ...(video.posterUrl ? { images: [{ url: video.posterUrl }] } : {}),
+    },
+    twitter: {
+      card: video.posterUrl ? "summary_large_image" : "summary",
+      title: filename,
+      description,
+      ...(video.posterUrl ? { images: [video.posterUrl] } : {}),
+    },
+  }
 }
 
 export function validateVideos(

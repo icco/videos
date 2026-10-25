@@ -3,9 +3,8 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { cache } from "react"
 
-import { site } from "@/lib/site"
 import { getVideo } from "@/lib/storage"
-import { videoPagePath } from "@/lib/videos"
+import { videoMetadata } from "@/lib/videos"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -23,22 +22,7 @@ type Props = {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { year, filename } = await params
   const video = await findVideo(year, filename)
-  const url = new URL(videoPagePath(video.url), site.url).href
-  const description = `Watch ${filename} on ${site.name}.`
-  return {
-    title: filename,
-    description,
-    alternates: { canonical: url },
-    openGraph: {
-      type: "video.other",
-      title: filename,
-      description,
-      url,
-      siteName: site.name,
-      videos: [{ url: video.url }],
-    },
-    twitter: { card: "summary", title: filename, description },
-  }
+  return videoMetadata(filename, video)
 }
 
 export default async function VideoPage({ params }: Props) {
@@ -60,6 +44,7 @@ export default async function VideoPage({ params }: Props) {
         controls
         playsInline
         preload="metadata"
+        poster={video.posterUrl}
         src={video.url}
         aria-label={filename}
         className="aspect-video w-full rounded-lg bg-black"

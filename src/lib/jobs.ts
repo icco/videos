@@ -11,7 +11,12 @@ import { getTsid } from "tsid-ts"
 import { VIDEO_QUEUE_PREFIX, videoBucket, videoPrefix } from "./storage.ts"
 import { withPreparedVideo } from "./transcode.ts"
 import type { UploadedFile } from "./uploads.ts"
-import { VIDEO_TYPES, videoExtension, type VideoJob } from "./videos.ts"
+import {
+  VIDEO_TYPES,
+  videoExtension,
+  type VideoJob,
+  videoPosterPath,
+} from "./videos.ts"
 
 const LEASE_MS = 2 * 60 * 1000
 
@@ -132,18 +137,29 @@ async function processVideo(file: StorageFile, shutdown?: AbortSignal) {
         name: String(metadata.metadata?.originalName),
         size: Number(metadata.size),
       },
-      async (stream) => {
+      async (stream, _extension, thumbnail) => {
+        const outputPath = String(metadata.metadata?.outputPath)
+        const bucket = videoBucket()
         await pipeline(
           stream,
-          videoBucket()
-            .file(String(metadata.metadata?.outputPath))
-            .createWriteStream({
-              resumable: true,
-              metadata: {
-                contentType: "video/webm",
-                cacheControl: "public, max-age=31536000, immutable",
-              },
-            }),
+          bucket.file(outputPath).createWriteStream({
+            resumable: true,
+            metadata: {
+              contentType: "video/webm",
+              cacheControl: "public, max-age=31536000, immutable",
+            },
+          }),
+          { signal }
+        )
+        await pipeline(
+          thumbnail,
+          bucket.file(videoPosterPath(outputPath)).createWriteStream({
+            resumable: true,
+            metadata: {
+              contentType: "image/jpeg",
+              cacheControl: "public, max-age=31536000, immutable",
+            },
+          }),
           { signal }
         )
       },
