@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process"
 import { createReadStream, createWriteStream } from "node:fs"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Readable } from "node:stream"
@@ -12,6 +12,28 @@ import type { UploadedFile } from "./uploads.ts"
 import { videoExtension } from "./videos.ts"
 
 const execFileAsync = promisify(execFile)
+
+export interface PreparedVideoDetails {
+  durationSeconds: number
+  width: number
+  height: number
+  videoCodec: string
+  audioCodec: string | null
+  sizeBytes: number
+  frames: Buffer[]
+}
+
+interface ProbedStream {
+  codec_type?: string
+  codec_name?: string
+  width?: number
+  height?: number
+  duration?: string
+}
+
+interface ProbedFormat {
+  duration?: string
+}
 
 const INPUT_FORMATS: Record<string, string> = {
   ".mp4": "mov",
@@ -25,7 +47,11 @@ const INPUT_FORMATS: Record<string, string> = {
 // Keep the temporary WebM alive until its upload finishes, including on errors.
 export async function withPreparedVideo<T>(
   file: File | UploadedFile,
-  upload: (stream: Readable, extension: string) => Promise<T>,
+  upload: (
+    stream: Readable,
+    extension: string,
+    details: PreparedVideoDetails
+  ) => Promise<T>,
   signal?: AbortSignal
 ): Promise<T> {
   const inputFormat = INPUT_FORMATS[videoExtension(file.name)]
@@ -35,6 +61,7 @@ export async function withPreparedVideo<T>(
   try {
     const input = "path" in file ? file.path : join(directory, "input")
     const output = join(directory, "output.webm")
+    const framePattern = join(directory, "frame-%d.jpg")
     if (!("path" in file)) {
       await pipeline(
         Readable.fromWeb(file.stream() as ReadableStream<Uint8Array>),
@@ -42,6 +69,7 @@ export async function withPreparedVideo<T>(
         { signal }
       )
     }
+    const padFilter = "pad=ceil(max(iw\\,64)/2)*2:ceil(max(ih\\,64)/2)*2"
     await execFileAsync(
       "ffmpeg",
       [
@@ -67,7 +95,7 @@ export async function withPreparedVideo<T>(
         "30",
         "-vf",
         // SVT-AV1 in the Docker image requires even dimensions of at least 64×64.
-        "pad=ceil(max(iw\\,64)/2)*2:ceil(max(ih\\,64)/2)*2",
+        padFilter,
         "-pix_fmt",
         "yuv420p",
         "-svtav1-params",
@@ -81,11 +109,56 @@ export async function withPreparedVideo<T>(
         "-cues_to_front",
         "1",
         output,
+        "-map",
+        "0:V:0",
+        "-vf",
+        `thumbnail=25,${padFilter},scale='min(640,iw)':-2`,
+        "-frames:v",
+        "4",
+        "-fps_mode",
+        "vfr",
+        "-q:v",
+        "4",
+        framePattern,
       ],
       { signal, timeout: 60 * 60 * 1000, killSignal: "SIGKILL" }
     )
+    const [{ stdout: probeJson }, fileStat, entries] = await Promise.all([
+      execFileAsync(
+        "ffprobe",
+        ["-v", "error", "-show_streams", "-show_format", "-of", "json", output],
+        { signal }
+      ),
+      stat(output),
+      readdir(directory),
+    ])
+    const probed = JSON.parse(probeJson) as {
+      streams?: ProbedStream[]
+      format?: ProbedFormat
+    }
+    const streams = probed.streams || []
+    const videoStream = streams.find((s) => s.codec_type === "video")
+    const audioStream = streams.find((s) => s.codec_type === "audio")
+    const durationSeconds =
+      Number(probed.format?.duration || videoStream?.duration || 0) || 0
+    const frameFiles = entries
+      .filter((name) => /^frame-\d+\.jpg$/.test(name))
+      .sort()
+    const frames = await Promise.all(
+      frameFiles.map((name) => readFile(join(directory, name)))
+    )
     stream = createReadStream(output)
-    return await upload(stream, ".webm")
+    return await upload(stream, ".webm", {
+      durationSeconds,
+      width: Number(videoStream?.width || 0),
+      height: Number(videoStream?.height || 0),
+      videoCodec: String(videoStream?.codec_name || "av1"),
+      audioCodec: audioStream?.codec_name
+        ? String(audioStream.codec_name)
+        : null,
+      sizeBytes: fileStat.size,
+      frames,
+    })
   } finally {
     stream?.destroy()
     await rm(directory, { recursive: true, force: true })

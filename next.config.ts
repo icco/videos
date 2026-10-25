@@ -22,7 +22,11 @@ const contentSecurityPolicy = [
 const nextConfig: NextConfig = {
   output: "standalone",
   // Keep the GCS authentication stack unbundled on Node 26, as in photos.
-  serverExternalPackages: ["@google-cloud/storage"],
+  serverExternalPackages: [
+    "@google-cloud/storage",
+    "@google/genai",
+    "postgres",
+  ],
   poweredByHeader: false,
   reactStrictMode: true,
   async redirects() {

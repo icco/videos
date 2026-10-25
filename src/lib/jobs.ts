@@ -8,6 +8,8 @@ import { setTimeout as delay } from "node:timers/promises"
 import type { File as StorageFile, FileMetadata } from "@google-cloud/storage"
 import { getTsid } from "tsid-ts"
 
+import { summarizeVideo } from "./analysis.ts"
+import { saveVideoMetadata } from "./db.ts"
 import { VIDEO_QUEUE_PREFIX, videoBucket, videoPrefix } from "./storage.ts"
 import { withPreparedVideo } from "./transcode.ts"
 import type { UploadedFile } from "./uploads.ts"
@@ -126,17 +128,19 @@ async function processVideo(file: StorageFile, shutdown?: AbortSignal) {
     await pipeline(file.createReadStream(), createWriteStream(input), {
       signal,
     })
+    const originalName = String(metadata.metadata?.originalName)
+    const outputPath = String(metadata.metadata?.outputPath)
     await withPreparedVideo(
       {
         path: input,
-        name: String(metadata.metadata?.originalName),
+        name: originalName,
         size: Number(metadata.size),
       },
-      async (stream) => {
+      async (stream, _extension, details) => {
         await pipeline(
           stream,
           videoBucket()
-            .file(String(metadata.metadata?.outputPath))
+            .file(outputPath)
             .createWriteStream({
               resumable: true,
               metadata: {
@@ -146,6 +150,27 @@ async function processVideo(file: StorageFile, shutdown?: AbortSignal) {
             }),
           { signal }
         )
+        const { summary, tags } = await summarizeVideo(
+          originalName,
+          details,
+          signal
+        )
+        try {
+          await saveVideoMetadata({
+            path: outputPath,
+            originalName,
+            summary,
+            tags,
+            durationSeconds: details.durationSeconds,
+            width: details.width,
+            height: details.height,
+            videoCodec: details.videoCodec,
+            audioCodec: details.audioCodec,
+            sizeBytes: details.sizeBytes,
+          })
+        } catch (error) {
+          console.error("Video metadata persistence failed:", error)
+        }
       },
       signal
     )

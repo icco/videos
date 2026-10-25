@@ -3,9 +3,8 @@ import Link from "next/link"
 import { notFound } from "next/navigation"
 import { cache } from "react"
 
-import { site } from "@/lib/site"
 import { getVideo } from "@/lib/storage"
-import { videoPagePath } from "@/lib/videos"
+import { formatBytes, formatDuration, videoMetadata } from "@/lib/videos"
 
 export const runtime = "nodejs"
 export const dynamic = "force-dynamic"
@@ -23,22 +22,7 @@ type Props = {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { year, filename } = await params
   const video = await findVideo(year, filename)
-  const url = new URL(videoPagePath(video.url), site.url).href
-  const description = `Watch ${filename} on ${site.name}.`
-  return {
-    title: filename,
-    description,
-    alternates: { canonical: url },
-    openGraph: {
-      type: "video.other",
-      title: filename,
-      description,
-      url,
-      siteName: site.name,
-      videos: [{ url: video.url }],
-    },
-    twitter: { card: "summary", title: filename, description },
-  }
+  return videoMetadata(filename, video)
 }
 
 export default async function VideoPage({ params }: Props) {
@@ -47,6 +31,7 @@ export default async function VideoPage({ params }: Props) {
   const year = decodeURIComponent(encoded.year)
   const filename = decodeURIComponent(encoded.filename)
   const video = await findVideo(year, filename)
+  const metadata = video.metadata
 
   return (
     <>
@@ -56,6 +41,9 @@ export default async function VideoPage({ params }: Props) {
       <h1 className="mt-6 mb-4 text-2xl font-bold break-words sm:text-3xl">
         {filename}
       </h1>
+      {metadata?.summary && (
+        <p className="mb-4 text-base-content/80">{metadata.summary}</p>
+      )}
       <video
         controls
         playsInline
@@ -67,6 +55,50 @@ export default async function VideoPage({ params }: Props) {
         Your browser does not support video playback. Use the link below to open
         the file.
       </video>
+      {metadata && (
+        <section aria-labelledby="video-details" className="mt-6">
+          <h2 id="video-details" className="mb-3 text-lg font-semibold">
+            Details
+          </h2>
+          {metadata.tags.length > 0 && (
+            <ul className="mb-4 flex flex-wrap gap-2" aria-label="Tags">
+              {metadata.tags.map((tag) => (
+                <li key={tag} className="badge badge-outline">
+                  {tag}
+                </li>
+              ))}
+            </ul>
+          )}
+          <dl className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+            <div>
+              <dt className="text-base-content/60">Original file</dt>
+              <dd className="break-all">{metadata.originalName}</dd>
+            </div>
+            <div>
+              <dt className="text-base-content/60">Duration</dt>
+              <dd>{formatDuration(metadata.durationSeconds)}</dd>
+            </div>
+            <div>
+              <dt className="text-base-content/60">Resolution</dt>
+              <dd>
+                {metadata.width} × {metadata.height}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-base-content/60">Codecs</dt>
+              <dd>
+                {metadata.audioCodec
+                  ? `${metadata.videoCodec} / ${metadata.audioCodec}`
+                  : metadata.videoCodec}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-base-content/60">Size</dt>
+              <dd>{formatBytes(metadata.sizeBytes)}</dd>
+            </div>
+          </dl>
+        </section>
+      )}
       <p className="mt-4">
         <a href={video.url} className="link" target="_blank" rel="noreferrer">
           Open video file

@@ -1,3 +1,8 @@
+import type { Metadata } from "next"
+
+import type { VideoRecord } from "./db.ts"
+import { site } from "./site.ts"
+
 export const VIDEO_TYPES: Record<string, string> = {
   ".mp4": "video/mp4",
   ".m4v": "video/mp4",
@@ -32,6 +37,51 @@ export function videoPath(year: string, filename: string): string | null {
 
 export function videoPagePath(url: string): string {
   return `/videos/${new URL(url).pathname.split("/").slice(-2).join("/")}`
+}
+
+export function formatDuration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds))
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const secs = String(total % 60).padStart(2, "0")
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${secs}`
+  }
+  return `${minutes}:${secs}`
+}
+
+export function formatBytes(bytes: number): string {
+  const units = ["B", "KiB", "MiB", "GiB"]
+  let value = Math.max(0, bytes)
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit++
+  }
+  return unit === 0 ? `${value} B` : `${value.toFixed(1)} ${units[unit]}`
+}
+
+export function videoMetadata(
+  filename: string,
+  video: { url: string; metadata?: VideoRecord | null }
+): Metadata {
+  const url = new URL(videoPagePath(video.url), site.url).href
+  const description =
+    video.metadata?.summary || `Watch ${filename} on ${site.name}.`
+  return {
+    title: filename,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      type: "video.other",
+      title: filename,
+      description,
+      url,
+      siteName: site.name,
+      videos: [{ url: video.url }],
+    },
+    twitter: { card: "summary", title: filename, description },
+  }
 }
 
 export function validateVideos(

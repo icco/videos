@@ -11,7 +11,10 @@ let failWrite = 0
 let failList = false
 let lookedUp = []
 let failLookup = false
+let failGemini = false
+let geminiCalls = []
 const objects = new Map()
+const dbRows = new Map()
 
 function storageError(code) {
   return Object.assign(new Error(`Storage error ${code}`), { code })
@@ -106,7 +109,84 @@ mock.module("@google-cloud/storage", {
   },
 })
 
+mock.module("@google/genai", {
+  namedExports: {
+    Type: {
+      OBJECT: "OBJECT",
+      STRING: "STRING",
+      ARRAY: "ARRAY",
+    },
+    GoogleGenAI: class {
+      constructor(options) {
+        this.options = options
+        this.models = {
+          generateContent: async (request) => {
+            geminiCalls.push({ options, request })
+            if (failGemini) throw new Error("Gemini unavailable")
+            return {
+              text: JSON.stringify({
+                summary: "A short test pattern clip with a sine tone.",
+                tags: ["Test Pattern", "sine-wave", "Test Pattern"],
+              }),
+            }
+          },
+        }
+      }
+    },
+  },
+})
+
+mock.module("postgres", {
+  defaultExport: function createSql() {
+    const sql = async (strings, ...values) => {
+      const query = strings.join("?").replace(/\s+/g, " ").trim()
+      if (query.startsWith("CREATE TABLE IF NOT EXISTS video_metadata")) {
+        return []
+      }
+      if (query.startsWith("INSERT INTO video_metadata")) {
+        const [
+          path,
+          original_name,
+          summary,
+          tags,
+          duration_seconds,
+          width,
+          height,
+          video_codec,
+          audio_codec,
+          size_bytes,
+        ] = values
+        const row = {
+          path,
+          original_name,
+          summary,
+          tags,
+          duration_seconds,
+          width,
+          height,
+          video_codec,
+          audio_codec,
+          size_bytes,
+          created_at: new Date("2026-10-25T00:00:00.000Z"),
+        }
+        dbRows.set(path, row)
+        return [row]
+      }
+      if (query.includes("FROM video_metadata WHERE path =")) {
+        const [path] = values
+        const row = dbRows.get(path)
+        return row ? [row] : []
+      }
+      throw new Error(`Unexpected query: ${query}`)
+    }
+    sql.end = async () => {}
+    return sql
+  },
+})
+
 process.env.GCP_BUCKET_NAME = "test-videos"
+process.env.DATABASE_URL = "postgresql://videos:secret@rope.local:5432/videos"
+process.env.GEMINI_API_KEY = "test-gemini-key"
 delete process.env.VIDEO_PUBLIC_BASE_URL
 const { POST } = await import("../src/app/api/upload/route.ts")
 const { GET } = await import("../src/app/api/list/route.ts")
@@ -115,17 +195,29 @@ const { POST: retryJob } =
   await import("../src/app/api/jobs/[id]/retry/route.ts")
 const { processPendingVideos } = await import("../src/lib/jobs.ts")
 const { getVideo, videoUrl } = await import("../src/lib/storage.ts")
-const { validateVideos, MAX_BATCH_BYTES, VIDEO_TYPES, videoPagePath } =
-  await import("../src/lib/videos.ts")
+const {
+  validateVideos,
+  MAX_BATCH_BYTES,
+  VIDEO_TYPES,
+  videoPagePath,
+  videoMetadata,
+  formatDuration,
+  formatBytes,
+} = await import("../src/lib/videos.ts")
 
 beforeEach(() => {
   writes = []
   objects.clear()
+  dbRows.clear()
+  geminiCalls = []
   listed = []
   failWrite = 0
   failList = false
   lookedUp = []
   failLookup = false
+  failGemini = false
+  process.env.DATABASE_URL = "postgresql://videos:secret@rope.local:5432/videos"
+  process.env.GEMINI_API_KEY = "test-gemini-key"
   delete process.env.VIDEO_PUBLIC_BASE_URL
 })
 
@@ -193,8 +285,26 @@ test("accepts durable uploads before processing and converts every format after 
     assert.equal(streams[0].pix_fmt, "yuv420p")
     assert.equal(streams[1].channels, 2)
     const [, year, filename] = file.path.split("/")
-    assert.deepEqual(await getVideo(year, filename), file)
+    const stored = await getVideo(year, filename)
+    assert.equal(stored.path, file.path)
+    assert.equal(stored.url, file.url)
+    assert.ok(stored.metadata, "stores extracted video metadata in postgres")
+    assert.equal(stored.metadata.originalName, files[index].name)
+    assert.equal(
+      stored.metadata.summary,
+      "A short test pattern clip with a sine tone."
+    )
+    assert.deepEqual(stored.metadata.tags, ["test pattern", "sine-wave"])
+    assert.equal(stored.metadata.width, 64)
+    assert.equal(stored.metadata.height, 64)
+    assert.equal(stored.metadata.videoCodec, "av1")
+    assert.equal(stored.metadata.audioCodec, "opus")
+    assert.equal(stored.metadata.sizeBytes, bytes.length)
+    assert.ok(stored.metadata.durationSeconds > 0)
   }
+  assert.equal(geminiCalls.length, files.length)
+  assert.equal(geminiCalls[0].request.model, "gemini-2.5-flash-lite")
+  assert.equal(geminiCalls[0].request.config.thinkingConfig.thinkingBudget, 0)
   assert.deepEqual(
     new Set((await (await GET()).json()).videos),
     new Set(converted.map((file) => videoUrl(file.path)))
@@ -406,6 +516,36 @@ test("looks up individual videos from past years and distinguishes missing files
   assert.equal(await getVideo("2025", "missing.mp4"), null)
   failLookup = true
   await assert.rejects(getVideo("2025", "a b.MOV"), /Storage unavailable/)
+})
+
+test("persists technical metadata even when Gemini fails or is unconfigured", async () => {
+  failGemini = true
+  const response = await POST(
+    request([new File([await createVideo(".mp4")], "clip.mp4")])
+  )
+  assert.equal(response.status, 202)
+  await processPendingVideos()
+  const converted = writes[1]
+  const [, year, filename] = converted.path.split("/")
+  const stored = await getVideo(year, filename)
+  assert.equal(stored.metadata.originalName, "clip.mp4")
+  assert.equal(stored.metadata.summary, null)
+  assert.deepEqual(stored.metadata.tags, [])
+  assert.equal(stored.metadata.width, 64)
+  assert.equal(stored.metadata.height, 64)
+
+  const pageMeta = videoMetadata(filename, stored)
+  assert.equal(pageMeta.description, `Watch ${filename} on Videos.`)
+  const withSummaryMeta = videoMetadata(filename, {
+    ...stored,
+    metadata: { ...stored.metadata, summary: "A short test clip." },
+  })
+  assert.equal(withSummaryMeta.description, "A short test clip.")
+  assert.equal(withSummaryMeta.openGraph.description, "A short test clip.")
+  assert.equal(withSummaryMeta.twitter.description, "A short test clip.")
+  assert.equal(formatDuration(65.4), "1:05")
+  assert.equal(formatDuration(3661), "1:01:01")
+  assert.equal(formatBytes(1536), "1.5 KiB")
 })
 
 test("invalid watch paths never access storage", async () => {
