@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process"
 import { createReadStream, createWriteStream } from "node:fs"
-import { mkdtemp, readdir, readFile, rm, stat } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Readable } from "node:stream"
@@ -44,6 +44,8 @@ const INPUT_FORMATS: Record<string, string> = {
   ".mkv": "matroska",
 }
 
+const SAMPLE_POSITIONS = [0.1, 0.35, 0.65, 0.9]
+
 // Keep the temporary WebM alive until its upload finishes, including on errors.
 export async function withPreparedVideo<T>(
   file: File | UploadedFile,
@@ -61,7 +63,6 @@ export async function withPreparedVideo<T>(
   try {
     const input = "path" in file ? file.path : join(directory, "input")
     const output = join(directory, "output.webm")
-    const framePattern = join(directory, "frame-%d.jpg")
     if (!("path" in file)) {
       await pipeline(
         Readable.fromWeb(file.stream() as ReadableStream<Uint8Array>),
@@ -109,28 +110,16 @@ export async function withPreparedVideo<T>(
         "-cues_to_front",
         "1",
         output,
-        "-map",
-        "0:V:0",
-        "-vf",
-        `thumbnail=25,${padFilter},scale='min(640,iw)':-2`,
-        "-frames:v",
-        "4",
-        "-fps_mode",
-        "vfr",
-        "-q:v",
-        "4",
-        framePattern,
       ],
       { signal, timeout: 60 * 60 * 1000, killSignal: "SIGKILL" }
     )
-    const [{ stdout: probeJson }, fileStat, entries] = await Promise.all([
+    const [{ stdout: probeJson }, fileStat] = await Promise.all([
       execFileAsync(
         "ffprobe",
         ["-v", "error", "-show_streams", "-show_format", "-of", "json", output],
         { signal }
       ),
       stat(output),
-      readdir(directory),
     ])
     const probed = JSON.parse(probeJson) as {
       streams?: ProbedStream[]
@@ -141,11 +130,40 @@ export async function withPreparedVideo<T>(
     const audioStream = streams.find((s) => s.codec_type === "audio")
     const durationSeconds =
       Number(probed.format?.duration || videoStream?.duration || 0) || 0
-    const frameFiles = entries
-      .filter((name) => /^frame-\d+\.jpg$/.test(name))
-      .sort()
+    const timestamps =
+      durationSeconds >= 1
+        ? SAMPLE_POSITIONS.map((pos) => (durationSeconds * pos).toFixed(3))
+        : ["0"]
     const frames = await Promise.all(
-      frameFiles.map((name) => readFile(join(directory, name)))
+      timestamps.map(async (timestamp, index) => {
+        const framePath = join(directory, `frame-${index}.jpg`)
+        await execFileAsync(
+          "ffmpeg",
+          [
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-ss",
+            timestamp,
+            "-i",
+            output,
+            "-map",
+            "0:V:0",
+            "-vf",
+            "scale='min(640,iw)':-2",
+            "-frames:v",
+            "1",
+            "-update",
+            "1",
+            "-q:v",
+            "4",
+            framePath,
+          ],
+          { signal, timeout: 60 * 1000, killSignal: "SIGKILL" }
+        )
+        return await readFile(framePath)
+      })
     )
     stream = createReadStream(output)
     return await upload(stream, ".webm", {

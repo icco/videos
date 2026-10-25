@@ -156,18 +156,21 @@ async function processVideo(file: StorageFile, shutdown?: AbortSignal) {
           signal
         )
         try {
-          await saveVideoMetadata({
-            path: outputPath,
-            originalName,
-            summary,
-            tags,
-            durationSeconds: details.durationSeconds,
-            width: details.width,
-            height: details.height,
-            videoCodec: details.videoCodec,
-            audioCodec: details.audioCodec,
-            sizeBytes: details.sizeBytes,
-          })
+          await saveVideoMetadata(
+            {
+              path: outputPath,
+              originalName,
+              summary,
+              tags,
+              durationSeconds: details.durationSeconds,
+              width: details.width,
+              height: details.height,
+              videoCodec: details.videoCodec,
+              audioCodec: details.audioCodec,
+              sizeBytes: details.sizeBytes,
+            },
+            signal
+          )
         } catch (error) {
           console.error("Video metadata persistence failed:", error)
         }

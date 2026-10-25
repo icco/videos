@@ -28,6 +28,8 @@ interface VideoRow {
   created_at: Date | string
 }
 
+const DB_TIMEOUT_MS = 5000
+
 let cachedUrl: string | undefined
 let client: postgres.Sql | undefined
 let initialized: Promise<void> | undefined
@@ -37,29 +39,74 @@ function getSql(): postgres.Sql | null {
   if (!url) return null
   if (!client || cachedUrl !== url) {
     cachedUrl = url
-    client = postgres(url, { max: 5 })
+    client = postgres(url, {
+      max: 5,
+      connect_timeout: 5,
+      idle_timeout: 20,
+      connection: {
+        statement_timeout: DB_TIMEOUT_MS,
+        lock_timeout: DB_TIMEOUT_MS,
+      },
+    })
     initialized = undefined
   }
   return client
 }
 
-async function ensureSchema(sql: postgres.Sql): Promise<void> {
+async function withQueryDeadline<T>(
+  query: Promise<T> & { cancel?: () => void },
+  signal?: AbortSignal
+): Promise<T> {
+  const deadline = signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(DB_TIMEOUT_MS)])
+    : AbortSignal.timeout(DB_TIMEOUT_MS)
+  deadline.throwIfAborted()
+  return await new Promise<T>((resolve, reject) => {
+    const onAbort = () => {
+      try {
+        query.cancel?.()
+      } catch {
+        // Ignore cancellation errors on a dead connection.
+      }
+      reject(deadline.reason ?? new Error("Database query timed out"))
+    }
+    deadline.addEventListener("abort", onAbort, { once: true })
+    query.then(
+      (value) => {
+        deadline.removeEventListener("abort", onAbort)
+        resolve(value)
+      },
+      (error) => {
+        deadline.removeEventListener("abort", onAbort)
+        reject(error)
+      }
+    )
+  })
+}
+
+async function ensureSchema(
+  sql: postgres.Sql,
+  signal?: AbortSignal
+): Promise<void> {
   if (!initialized) {
-    initialized = sql`
-      CREATE TABLE IF NOT EXISTS video_metadata (
-        path TEXT PRIMARY KEY,
-        original_name TEXT NOT NULL,
-        summary TEXT,
-        tags TEXT[] NOT NULL DEFAULT '{}',
-        duration_seconds DOUBLE PRECISION NOT NULL,
-        width INTEGER NOT NULL,
-        height INTEGER NOT NULL,
-        video_codec TEXT NOT NULL,
-        audio_codec TEXT,
-        size_bytes BIGINT NOT NULL,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      )
-    `
+    initialized = withQueryDeadline(
+      sql`
+        CREATE TABLE IF NOT EXISTS video_metadata (
+          path TEXT PRIMARY KEY,
+          original_name TEXT NOT NULL,
+          summary TEXT,
+          tags TEXT[] NOT NULL DEFAULT '{}',
+          duration_seconds DOUBLE PRECISION NOT NULL,
+          width INTEGER NOT NULL,
+          height INTEGER NOT NULL,
+          video_codec TEXT NOT NULL,
+          audio_codec TEXT,
+          size_bytes BIGINT NOT NULL,
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `,
+      signal
+    )
       .then(() => undefined)
       .catch((error) => {
         initialized = undefined
@@ -89,59 +136,15 @@ function toRecord(row: VideoRow): VideoRecord {
 }
 
 export async function saveVideoMetadata(
-  record: Omit<VideoRecord, "createdAt">
+  record: Omit<VideoRecord, "createdAt">,
+  signal?: AbortSignal
 ): Promise<VideoRecord | null> {
   const sql = getSql()
   if (!sql) return null
-  await ensureSchema(sql)
-  const [row] = await sql<VideoRow[]>`
-    INSERT INTO video_metadata (
-      path,
-      original_name,
-      summary,
-      tags,
-      duration_seconds,
-      width,
-      height,
-      video_codec,
-      audio_codec,
-      size_bytes
-    ) VALUES (
-      ${record.path},
-      ${record.originalName},
-      ${record.summary},
-      ${record.tags},
-      ${record.durationSeconds},
-      ${record.width},
-      ${record.height},
-      ${record.videoCodec},
-      ${record.audioCodec},
-      ${record.sizeBytes}
-    )
-    ON CONFLICT (path) DO UPDATE SET
-      original_name = EXCLUDED.original_name,
-      summary = EXCLUDED.summary,
-      tags = EXCLUDED.tags,
-      duration_seconds = EXCLUDED.duration_seconds,
-      width = EXCLUDED.width,
-      height = EXCLUDED.height,
-      video_codec = EXCLUDED.video_codec,
-      audio_codec = EXCLUDED.audio_codec,
-      size_bytes = EXCLUDED.size_bytes
-    RETURNING *
-  `
-  return row ? toRecord(row) : null
-}
-
-export async function getVideoMetadata(
-  path: string
-): Promise<VideoRecord | null> {
-  const sql = getSql()
-  if (!sql) return null
-  try {
-    await ensureSchema(sql)
-    const [row] = await sql<VideoRow[]>`
-      SELECT
+  await ensureSchema(sql, signal)
+  const [row] = await withQueryDeadline(
+    sql<VideoRow[]>`
+      INSERT INTO video_metadata (
         path,
         original_name,
         summary,
@@ -151,11 +154,63 @@ export async function getVideoMetadata(
         height,
         video_codec,
         audio_codec,
-        size_bytes,
-        created_at
-      FROM video_metadata
-      WHERE path = ${path}
-    `
+        size_bytes
+      ) VALUES (
+        ${record.path},
+        ${record.originalName},
+        ${record.summary},
+        ${record.tags},
+        ${record.durationSeconds},
+        ${record.width},
+        ${record.height},
+        ${record.videoCodec},
+        ${record.audioCodec},
+        ${record.sizeBytes}
+      )
+      ON CONFLICT (path) DO UPDATE SET
+        original_name = EXCLUDED.original_name,
+        summary = EXCLUDED.summary,
+        tags = EXCLUDED.tags,
+        duration_seconds = EXCLUDED.duration_seconds,
+        width = EXCLUDED.width,
+        height = EXCLUDED.height,
+        video_codec = EXCLUDED.video_codec,
+        audio_codec = EXCLUDED.audio_codec,
+        size_bytes = EXCLUDED.size_bytes
+      RETURNING *
+    `,
+    signal
+  )
+  return row ? toRecord(row) : null
+}
+
+export async function getVideoMetadata(
+  path: string,
+  signal?: AbortSignal
+): Promise<VideoRecord | null> {
+  const sql = getSql()
+  if (!sql) return null
+  try {
+    await ensureSchema(sql, signal)
+    const [row] = await withQueryDeadline(
+      sql<VideoRow[]>`
+        SELECT
+          path,
+          original_name,
+          summary,
+          tags,
+          duration_seconds,
+          width,
+          height,
+          video_codec,
+          audio_codec,
+          size_bytes,
+          created_at
+        FROM video_metadata
+        WHERE path = ${path}
+      `,
+      signal
+    )
     return row ? toRecord(row) : null
   } catch (error) {
     console.error("Video metadata lookup failed:", error)
