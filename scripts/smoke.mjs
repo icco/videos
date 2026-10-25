@@ -18,7 +18,10 @@ const fixtureNames = [
   "a%2Fb.mp4",
   "100%.mp4",
 ]
-const fixturePaths = new Set(fixtureNames.map((name) => `videos/2025/${name}`))
+const fixturePaths = new Set([
+  ...fixtureNames.map((name) => `videos/2025/${name}`),
+  "videos/2025/smoke video.jpg",
+])
 const lookups = []
 const currentPrefix = `videos/${new Date().getUTCFullYear()}/`
 let listNames = [
@@ -353,7 +356,10 @@ try {
       const watchDocument = watchDom.window.document
       assert.deepEqual(
         [...new Set(lookups.slice(lookupStart))],
-        [`videos/2025/${filename}`],
+        [
+          `videos/2025/${filename}`,
+          `videos/2025/${filename.replace(/\.mp4$/, ".jpg")}`,
+        ],
         `Page and metadata must look up the exact filename: ${filename}`
       )
       assert.equal(watchDocument.querySelectorAll("main").length, 1)
@@ -363,6 +369,32 @@ try {
       assert.ok(player)
       assert.equal(player.getAttribute("preload"), "metadata")
       assert.ok(player.getAttribute("src").endsWith(watchPath))
+      if (filename === "smoke video.mp4") {
+        const posterPath = "/videos/2025/smoke%20video.jpg"
+        assert.ok(player.getAttribute("poster")?.endsWith(posterPath))
+        assert.equal(
+          watchDocument.querySelector('meta[property="og:image"]')?.content,
+          player.getAttribute("poster")
+        )
+        assert.equal(
+          watchDocument.querySelector('meta[name="twitter:card"]')?.content,
+          "summary_large_image"
+        )
+        assert.equal(
+          watchDocument.querySelector('meta[name="twitter:image"]')?.content,
+          player.getAttribute("poster")
+        )
+      } else {
+        assert.equal(player.getAttribute("poster"), null)
+        assert.equal(
+          watchDocument.querySelector('meta[property="og:image"]'),
+          null
+        )
+        assert.equal(
+          watchDocument.querySelector('meta[name="twitter:card"]')?.content,
+          "summary"
+        )
+      }
       assert.equal(
         watchDocument.querySelector('a[target="_blank"][class="link"]').href,
         player.getAttribute("src")

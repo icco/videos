@@ -30,9 +30,13 @@ test("converts silent odd-sized video to AV1 WebM and removes temporary files", 
   })
   await withPreparedVideo(
     new File([input], "silent.mkv"),
-    async (stream, ext) => {
+    async (stream, ext, thumbnail) => {
       assert.equal(ext, ".webm")
-      const bytes = Buffer.concat(await Array.fromAsync(stream))
+      assert.ok(thumbnail, "provides a thumbnail stream")
+      const [bytes, thumbnailBytes] = await Promise.all([
+        Array.fromAsync(stream).then((chunks) => Buffer.concat(chunks)),
+        Array.fromAsync(thumbnail).then((chunks) => Buffer.concat(chunks)),
+      ])
       const { streams, format } = probeVideo(bytes)
       assert.match(format.format_name, /webm/)
       assert.equal(streams.length, 1)
@@ -40,6 +44,12 @@ test("converts silent odd-sized video to AV1 WebM and removes temporary files", 
       assert.equal(streams[0].pix_fmt, "yuv420p")
       assert.equal(streams[0].width, 64)
       assert.equal(streams[0].height, 64)
+
+      const probedThumbnail = probeVideo(thumbnailBytes)
+      assert.equal(probedThumbnail.streams.length, 1)
+      assert.equal(probedThumbnail.streams[0].codec_name, "mjpeg")
+      assert.equal(probedThumbnail.streams[0].width, 64)
+      assert.equal(probedThumbnail.streams[0].height, 64)
     }
   )
   assert.deepEqual(await readdir(directory), [])

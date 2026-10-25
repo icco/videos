@@ -25,16 +25,22 @@ const INPUT_FORMATS: Record<string, string> = {
 // Keep the temporary WebM alive until its upload finishes, including on errors.
 export async function withPreparedVideo<T>(
   file: File | UploadedFile,
-  upload: (stream: Readable, extension: string) => Promise<T>,
+  upload: (
+    stream: Readable,
+    extension: string,
+    thumbnail: Readable
+  ) => Promise<T>,
   signal?: AbortSignal
 ): Promise<T> {
   const inputFormat = INPUT_FORMATS[videoExtension(file.name)]
   if (!inputFormat) throw new Error("Unsupported video format.")
   const directory = await mkdtemp(join(tmpdir(), "videos-"))
   let stream: Readable | undefined
+  let thumbnail: Readable | undefined
   try {
     const input = "path" in file ? file.path : join(directory, "input")
     const output = join(directory, "output.webm")
+    const poster = join(directory, "output.jpg")
     if (!("path" in file)) {
       await pipeline(
         Readable.fromWeb(file.stream() as ReadableStream<Uint8Array>),
@@ -42,6 +48,7 @@ export async function withPreparedVideo<T>(
         { signal }
       )
     }
+    const padFilter = "pad=ceil(max(iw\\,64)/2)*2:ceil(max(ih\\,64)/2)*2"
     await execFileAsync(
       "ffmpeg",
       [
@@ -67,7 +74,7 @@ export async function withPreparedVideo<T>(
         "30",
         "-vf",
         // SVT-AV1 in the Docker image requires even dimensions of at least 64×64.
-        "pad=ceil(max(iw\\,64)/2)*2:ceil(max(ih\\,64)/2)*2",
+        padFilter,
         "-pix_fmt",
         "yuv420p",
         "-svtav1-params",
@@ -81,13 +88,26 @@ export async function withPreparedVideo<T>(
         "-cues_to_front",
         "1",
         output,
+        "-map",
+        "0:V:0",
+        "-vf",
+        `thumbnail,${padFilter},scale='min(1280,iw)':-2`,
+        "-frames:v",
+        "1",
+        "-update",
+        "1",
+        "-q:v",
+        "3",
+        poster,
       ],
       { signal, timeout: 60 * 60 * 1000, killSignal: "SIGKILL" }
     )
     stream = createReadStream(output)
-    return await upload(stream, ".webm")
+    thumbnail = createReadStream(poster)
+    return await upload(stream, ".webm", thumbnail)
   } finally {
     stream?.destroy()
+    thumbnail?.destroy()
     await rm(directory, { recursive: true, force: true })
   }
 }
