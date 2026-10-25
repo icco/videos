@@ -31,7 +31,7 @@
     "@wrksz/themes": "^2.0.3",
     "busboy": "^1.6.0",
     "jsdom": "^30.1.2",
-    "next": "^16.4.0",
+    "next": "^16.4.3",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "tsid-ts": "^0.0.9"
@@ -45,7 +45,7 @@
     "@types/react-dom": "^19.3.0",
     "daisyui": "^5.7.47",
     "eslint": "^10.12.0",
-    "eslint-config-next": "^16.4.0",
+    "eslint-config-next": "^16.4.3",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-simple-import-sort": "^14.0.0",
     "prettier": "^3.9.10",
