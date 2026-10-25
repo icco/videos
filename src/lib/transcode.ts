@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process"
 import { createReadStream, createWriteStream } from "node:fs"
-import { mkdtemp, rm } from "node:fs/promises"
+import { mkdtemp, readFile, rm, stat } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { Readable } from "node:stream"
@@ -13,6 +13,28 @@ import { videoExtension } from "./videos.ts"
 
 const execFileAsync = promisify(execFile)
 
+export interface PreparedVideoDetails {
+  durationSeconds: number
+  width: number
+  height: number
+  videoCodec: string
+  audioCodec: string | null
+  sizeBytes: number
+  frames: Buffer[]
+}
+
+interface ProbedStream {
+  codec_type?: string
+  codec_name?: string
+  width?: number
+  height?: number
+  duration?: string
+}
+
+interface ProbedFormat {
+  duration?: string
+}
+
 const INPUT_FORMATS: Record<string, string> = {
   ".mp4": "mov",
   ".m4v": "mov",
@@ -22,13 +44,16 @@ const INPUT_FORMATS: Record<string, string> = {
   ".mkv": "matroska",
 }
 
+const SAMPLE_POSITIONS = [0.1, 0.35, 0.65, 0.9]
+
 // Keep the temporary WebM alive until its upload finishes, including on errors.
 export async function withPreparedVideo<T>(
   file: File | UploadedFile,
   upload: (
     stream: Readable,
     extension: string,
-    thumbnail: Readable
+    thumbnail: Readable,
+    details: PreparedVideoDetails
   ) => Promise<T>,
   signal?: AbortSignal
 ): Promise<T> {
@@ -102,9 +127,83 @@ export async function withPreparedVideo<T>(
       ],
       { signal, timeout: 60 * 60 * 1000, killSignal: "SIGKILL" }
     )
+    const [{ stdout: probeJson }, fileStat] = await Promise.all([
+      execFileAsync(
+        "ffprobe",
+        ["-v", "error", "-show_streams", "-show_format", "-of", "json", output],
+        { signal }
+      ),
+      stat(output),
+    ])
+    const probed = JSON.parse(probeJson) as {
+      streams?: ProbedStream[]
+      format?: ProbedFormat
+    }
+    const streams = probed.streams || []
+    const videoStream = streams.find((s) => s.codec_type === "video")
+    const audioStream = streams.find((s) => s.codec_type === "audio")
+    const durationSeconds =
+      Number(probed.format?.duration || videoStream?.duration || 0) || 0
+    const videoDuration = Number(videoStream?.duration || durationSeconds) || 0
+    const timestamps =
+      videoDuration >= 1
+        ? SAMPLE_POSITIONS.map((pos) => (videoDuration * pos).toFixed(3))
+        : ["0"]
+    const sampledFrames = (
+      await Promise.all(
+        timestamps.map(async (timestamp, index) => {
+          const framePath = join(directory, `frame-${index}.jpg`)
+          try {
+            await execFileAsync(
+              "ffmpeg",
+              [
+                "-nostdin",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-ss",
+                timestamp,
+                "-i",
+                output,
+                "-map",
+                "0:V:0",
+                "-vf",
+                "scale='min(640,iw)':-2",
+                "-frames:v",
+                "1",
+                "-update",
+                "1",
+                "-q:v",
+                "4",
+                framePath,
+              ],
+              { signal, timeout: 60 * 1000, killSignal: "SIGKILL" }
+            )
+            return await readFile(framePath)
+          } catch (error) {
+            signal?.throwIfAborted()
+            if ((error as NodeJS.ErrnoException).code === "ENOENT") return null
+            return null
+          }
+        })
+      )
+    ).filter((frame) => frame !== null)
+    const frames = sampledFrames.length
+      ? sampledFrames
+      : [await readFile(poster)]
     stream = createReadStream(output)
     thumbnail = createReadStream(poster)
-    return await upload(stream, ".webm", thumbnail)
+    return await upload(stream, ".webm", thumbnail, {
+      durationSeconds,
+      width: Number(videoStream?.width || 0),
+      height: Number(videoStream?.height || 0),
+      videoCodec: String(videoStream?.codec_name || "av1"),
+      audioCodec: audioStream?.codec_name
+        ? String(audioStream.codec_name)
+        : null,
+      sizeBytes: fileStat.size,
+      frames,
+    })
   } finally {
     stream?.destroy()
     thumbnail?.destroy()

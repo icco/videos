@@ -1,5 +1,6 @@
 import { Storage } from "@google-cloud/storage"
 
+import { getVideoMetadata } from "./db.ts"
 import {
   VIDEO_TYPES,
   videoExtension,
@@ -43,14 +44,16 @@ export async function getVideo(year: string, filename: string) {
   if (!path) return null
   const posterPath = videoPosterPath(path)
   const bucket = videoBucket()
-  const [[exists], [posterExists]] = await Promise.all([
+  const [[exists], [posterExists], metadata] = await Promise.all([
     bucket.file(path).exists(),
     bucket.file(posterPath).exists(),
+    getVideoMetadata(path),
   ])
   if (!exists) return null
   return {
     path,
     url: videoUrl(path),
     ...(posterExists ? { posterUrl: videoUrl(posterPath) } : {}),
+    ...(metadata ? { metadata } : {}),
   }
 }
