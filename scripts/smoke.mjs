@@ -355,11 +355,11 @@ try {
       const watchDom = new JSDOM(await watch.text())
       const watchDocument = watchDom.window.document
       assert.deepEqual(
-        [...new Set(lookups.slice(lookupStart))],
-        [
+        new Set(lookups.slice(lookupStart)),
+        new Set([
           `videos/2025/${filename}`,
           `videos/2025/${filename.replace(/\.mp4$/, ".jpg")}`,
-        ],
+        ]),
         `Page and metadata must look up the exact filename: ${filename}`
       )
       assert.equal(watchDocument.querySelectorAll("main").length, 1)

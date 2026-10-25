@@ -91,7 +91,7 @@ export async function withPreparedVideo<T>(
         "-map",
         "0:V:0",
         "-vf",
-        `thumbnail,${padFilter},scale='min(1280,iw)':-2`,
+        `${padFilter},scale='min(1280,iw)':-2,thumbnail`,
         "-frames:v",
         "1",
         "-update",
