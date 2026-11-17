@@ -1,7 +1,11 @@
-import { registerOTel } from "@vercel/otel"
-
 export async function register() {
-  registerOTel({ serviceName: "videos" })
+  if (
+    process.env.OTEL_EXPORTER_OTLP_ENDPOINT ||
+    process.env.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+  ) {
+    const { registerOTel } = await import("@vercel/otel")
+    registerOTel({ serviceName: "videos" })
+  }
 
   if (
     process.env.NEXT_RUNTIME === "nodejs" &&
