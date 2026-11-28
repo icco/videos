@@ -1,4 +1,4 @@
-import { InformationCircleIcon } from "@heroicons/react/24/outline"
+import { Info } from "lucide-react"
 import type { NavLink } from "@icco/react-common/SiteHeader"
 import { createElement } from "react"
 
@@ -13,7 +13,7 @@ export const site = {
       name: "About",
       href: "/about",
       prefetch: false,
-      icon: createElement(InformationCircleIcon, { className: "h-5 w-5" }),
+      icon: createElement(Info, { className: "h-5 w-5" }),
     },
   ] satisfies NavLink[],
   analyticsPath: "/analytics/videos",
